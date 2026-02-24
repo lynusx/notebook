@@ -1,0 +1,1408 @@
+# Dart 核心库 dart:math 详解
+
+> 本文基于 Dart SDK 3.x 版本，深入解析 dart:math 核心库。该库提供了数学常数、三角函数、对数函数、幂函数、随机数生成器以及几何类，是进行科学计算、图形处理和游戏开发的必备工具。
+
+---
+
+## 目录
+
+1. [简介与导入](#1-简介与导入)
+2. [数学常数](#2-数学常数)
+3. [三角函数](#3-三角函数)
+4. [反三角函数](#4-反三角函数)
+5. [指数与对数函数](#5-指数与对数函数)
+6. [其他数学函数](#6-其他数学函数)
+7. [Random 随机数生成器](#7-random-随机数生成器)
+8. [Point 点类](#8-point-点类)
+9. [Rectangle 矩形类](#9-rectangle-矩形类)
+10. [MutableRectangle 可变矩形类](#10-mutablerectangle-可变矩形类)
+11. [实战应用示例](#11-实战应用示例)
+12. [附录：速查表](#12-附录速查表)
+
+---
+
+## 1. 简介与导入
+
+### 1.1 什么是 dart:math？
+
+dart:math 是 Dart SDK 的核心库之一，提供了丰富的数学功能，包括：
+
+| 功能类别   | 内容                               |
+| ---------- | ---------------------------------- |
+| 数学常数   | π、e、√2 等                        |
+| 三角函数   | sin、cos、tan 等                   |
+| 反三角函数 | asin、acos、atan 等                |
+| 指数对数   | exp、log、pow 等                   |
+| 其他函数   | sqrt、max、min 等                  |
+| 随机数     | Random 类                          |
+| 几何类     | Point、Rectangle、MutableRectangle |
+
+### 1.2 导入库
+
+```dart
+import 'dart:math';
+```
+
+### 1.3 核心概念
+
+dart:math 中的所有三角函数都使用**弧度**作为角度单位：
+
+```dart
+// 角度转弧度
+double degreesToRadians(double degrees) => degrees * pi / 180;
+
+// 弧度转角度
+double radiansToDegrees(double radians) => radians * 180 / pi;
+
+void main() {
+  // sin(30°) = 0.5
+  final result = sin(degreesToRadians(30));
+  print(result);  // 0.5
+}
+```
+
+> **Dart Tips：语法小贴士**
+>
+> 弧度（radian）是数学中常用的角度单位，一个完整的圆是 2π 弧度（约 6.283 弧度），等于 360 度。
+
+---
+
+## 2. 数学常数
+
+dart:math 提供了以下数学常数：
+
+| 常量      | 值                 | 说明                    |
+| --------- | ------------------ | ----------------------- |
+| `pi`      | 3.141592653589793  | 圆周率 π                |
+| `e`       | 2.718281828459045  | 自然对数的底数          |
+| `ln2`     | 0.6931471805599453 | 2 的自然对数            |
+| `ln10`    | 2.302585092994046  | 10 的自然对数           |
+| `log2e`   | 1.4426950408889634 | 以 2 为底 e 的对数      |
+| `log10e`  | 0.4342944819032518 | 以 10 为底 e 的对数     |
+| `sqrt2`   | 1.4142135623730951 | 2 的平方根              |
+| `sqrt1_2` | 0.7071067811865476 | 1/2 的平方根（即 √2/2） |
+
+### 2.1 基本使用
+
+```dart
+void constantsDemo() {
+  // 圆周率
+  print('π = $pi');
+
+  // 计算圆的周长
+  final radius = 5.0;
+  final circumference = 2 * pi * radius;
+  print('半径为 $radius 的圆周长: $circumference');
+
+  // 计算圆的面积
+  final area = pi * radius * radius;
+  print('半径为 $radius 的圆面积: $area');
+
+  // 自然对数的底数
+  print('e = $e');
+
+  // 2 的平方根
+  print('√2 = $sqrt2');
+
+  // 勾股定理
+  final a = 3.0;
+  final b = 4.0;
+  final c = sqrt(a * a + b * b);  // 5.0
+  print('直角三角形斜边: $c');
+}
+```
+
+### 2.2 常用公式
+
+```dart
+void formulaExamples() {
+  // 球体体积: V = 4/3 * π * r³
+  double sphereVolume(double radius) {
+    return 4 / 3 * pi * pow(radius, 3);
+  }
+
+  // 球体表面积: A = 4 * π * r²
+  double sphereSurfaceArea(double radius) {
+    return 4 * pi * radius * radius;
+  }
+
+  // 圆锥体积: V = 1/3 * π * r² * h
+  double coneVolume(double radius, double height) {
+    return 1 / 3 * pi * radius * radius * height;
+  }
+
+  // 复利公式: A = P * e^(rt)
+  double compoundInterest(double principal, double rate, double time) {
+    return principal * exp(rate * time);
+  }
+
+  print('球体体积(r=5): ${sphereVolume(5)}');
+  print('球体表面积(r=5): ${sphereSurfaceArea(5)}');
+  print('圆锥体积(r=3, h=4): ${coneVolume(3, 4)}');
+  print('复利(P=1000, r=0.05, t=10): ${compoundInterest(1000, 0.05, 10)}');
+}
+```
+
+---
+
+## 3. 三角函数
+
+dart:math 提供了完整的三角函数，所有函数都接受弧度值作为参数。
+
+### 3.1 正弦函数 sin
+
+```dart
+void sinDemo() {
+  // sin(0) = 0
+  print('sin(0) = ${sin(0)}');  // 0.0
+
+  // sin(π/2) = 1
+  print('sin(π/2) = ${sin(pi / 2)}');  // 1.0
+
+  // sin(π) = 0
+  print('sin(π) = ${sin(pi)}');  // ~0.0 (浮点误差)
+
+  // sin(30°) = 0.5
+  final angle30 = 30 * pi / 180;
+  print('sin(30°) = ${sin(angle30)}');  // 0.5
+
+  // 正弦波
+  for (var i = 0; i <= 360; i += 30) {
+    final rad = i * pi / 180;
+    final value = sin(rad);
+    print('sin($i°) = ${value.toStringAsFixed(4)}');
+  }
+}
+```
+
+### 3.2 余弦函数 cos
+
+```dart
+void cosDemo() {
+  // cos(0) = 1
+  print('cos(0) = ${cos(0)}');  // 1.0
+
+  // cos(π/2) = 0
+  print('cos(π/2) = ${cos(pi / 2)}');  // ~0.0
+
+  // cos(π) = -1
+  print('cos(π) = ${cos(pi)}');  // -1.0
+
+  // cos(60°) = 0.5
+  final angle60 = 60 * pi / 180;
+  print('cos(60°) = ${cos(angle60)}');  // 0.5
+}
+```
+
+### 3.3 正切函数 tan
+
+```dart
+void tanDemo() {
+  // tan(0) = 0
+  print('tan(0) = ${tan(0)}');  // 0.0
+
+  // tan(π/4) = 1
+  print('tan(π/4) = ${tan(pi / 4)}');  // ~1.0
+
+  // tan(45°) = 1
+  final angle45 = 45 * pi / 180;
+  print('tan(45°) = ${tan(angle45)}');  // 1.0
+
+  // tan(π/2) 趋向无穷大
+  print('tan(π/2) = ${tan(pi / 2)}');  // 非常大的数
+}
+```
+
+### 3.4 三角函数对照表
+
+| 函数     | 说明 | 定义域       | 值域     |
+| -------- | ---- | ------------ | -------- |
+| `sin(x)` | 正弦 | 所有实数     | [-1, 1]  |
+| `cos(x)` | 余弦 | 所有实数     | [-1, 1]  |
+| `tan(x)` | 正切 | x ≠ π/2 + kπ | 所有实数 |
+
+### 3.5 角度与弧度转换工具
+
+```dart
+class AngleConverter {
+  /// 角度转弧度
+  static double toRadians(double degrees) => degrees * pi / 180;
+
+  /// 弧度转角度
+  static double toDegrees(double radians) => radians * 180 / pi;
+}
+
+void angleConversionDemo() {
+  // 常用角度转换
+  final angles = [0, 30, 45, 60, 90, 180, 270, 360];
+
+  print('角度 -> 弧度');
+  for (final deg in angles) {
+    final rad = AngleConverter.toRadians(deg.toDouble());
+    print('$deg° = ${rad.toStringAsFixed(4)} rad');
+  }
+
+  print('\n三角函数值表');
+  print('角度\tsin\tcos\ttan');
+  for (final deg in [0, 30, 45, 60, 90]) {
+    final rad = AngleConverter.toRadians(deg.toDouble());
+    print('$deg°\t${sin(rad).toStringAsFixed(4)}\t'
+          '${cos(rad).toStringAsFixed(4)}\t'
+          '${tan(rad).toStringAsFixed(4)}');
+  }
+}
+```
+
+### 3.6 三角函数应用
+
+```dart
+void trigonometryApplications() {
+  // 1. 计算直角三角形的边
+  // 已知角度和一条边，求另一条边
+  double findOppositeSide(double angle, double hypotenuse) {
+    return sin(angle) * hypotenuse;
+  }
+
+  double findAdjacentSide(double angle, double hypotenuse) {
+    return cos(angle) * hypotenuse;
+  }
+
+  // 2. 计算两点间的距离（极坐标转直角坐标）
+  Point polarToCartesian(double radius, double angle) {
+    final x = radius * cos(angle);
+    final y = radius * sin(angle);
+    return Point(x, y);
+  }
+
+  // 3. 波形生成
+  List<double> generateSineWave(int samples, double frequency) {
+    return List.generate(samples, (i) {
+      final t = i / samples;
+      return sin(2 * pi * frequency * t);
+    });
+  }
+
+  // 4. 计算向量长度
+  double vectorLength(double x, double y) {
+    return sqrt(x * x + y * y);
+  }
+
+  // 5. 计算向量角度
+  double vectorAngle(double x, double y) {
+    return atan2(y, x);
+  }
+
+  // 示例
+  final angle = AngleConverter.toRadians(30);
+  print('斜边=10, 30°角的对边: ${findOppositeSide(angle, 10)}');
+  print('斜边=10, 30°角的邻边: ${findAdjacentSide(angle, 10)}');
+
+  final point = polarToCartesian(10, angle);
+  print('极坐标(10, 30°) -> 直角坐标: $point');
+}
+```
+
+---
+
+## 4. 反三角函数
+
+反三角函数用于根据三角函数值求角度。
+
+### 4.1 反正弦函数 asin
+
+```dart
+void asinDemo() {
+  // asin(0) = 0
+  print('asin(0) = ${asin(0)}');  // 0.0
+
+  // asin(1) = π/2
+  print('asin(1) = ${asin(1)}');  // 1.5708... (π/2)
+
+  // asin(0.5) = π/6 (30°)
+  final result = asin(0.5);
+  print('asin(0.5) = ${result} rad = ${AngleConverter.toDegrees(result)}°');
+
+  // 定义域: [-1, 1]
+  // asin(-1) = -π/2
+  print('asin(-1) = ${asin(-1)}');  // -1.5708...
+}
+```
+
+### 4.2 反余弦函数 acos
+
+```dart
+void acosDemo() {
+  // acos(1) = 0
+  print('acos(1) = ${acos(1)}');  // 0.0
+
+  // acos(0) = π/2
+  print('acos(0) = ${acos(0)}');  // 1.5708...
+
+  // acos(0.5) = π/3 (60°)
+  final result = acos(0.5);
+  print('acos(0.5) = ${result} rad = ${AngleConverter.toDegrees(result)}°');
+
+  // acos(-1) = π
+  print('acos(-1) = ${acos(-1)}');  // 3.1415... (π)
+}
+```
+
+### 4.3 反正切函数 atan
+
+```dart
+void atanDemo() {
+  // atan(0) = 0
+  print('atan(0) = ${atan(0)}');  // 0.0
+
+  // atan(1) = π/4 (45°)
+  final result = atan(1);
+  print('atan(1) = ${result} rad = ${AngleConverter.toDegrees(result)}°');
+
+  // atan(∞) = π/2
+  print('atan(非常大的数) = ${atan(1e10)}');  // ~1.5708
+
+  // atan(-1) = -π/4
+  print('atan(-1) = ${atan(-1)}');  // -0.7854...
+}
+```
+
+### 4.4 双参数反正切 atan2
+
+`atan2(y, x)` 返回从原点到点 (x, y) 的向量与 x 轴正方向的夹角，考虑了象限信息。
+
+```dart
+void atan2Demo() {
+  // 第一象限 (x>0, y>0)
+  print('atan2(1, 1) = ${atan2(1, 1)} rad = ${AngleConverter.toDegrees(atan2(1, 1))}°');
+
+  // 第二象限 (x<0, y>0)
+  print('atan2(1, -1) = ${atan2(1, -1)} rad = ${AngleConverter.toDegrees(atan2(1, -1))}°');
+
+  // 第三象限 (x<0, y<0)
+  print('atan2(-1, -1) = ${atan2(-1, -1)} rad = ${AngleConverter.toDegrees(atan2(-1, -1))}°');
+
+  // 第四象限 (x>0, y<0)
+  print('atan2(-1, 1) = ${atan2(-1, 1)} rad = ${AngleConverter.toDegrees(atan2(-1, 1))}°');
+
+  // 计算两点间的角度
+  final p1 = Point(0, 0);
+  final p2 = Point(3, 4);
+  final angle = atan2(p2.y - p1.y, p2.x - p1.x);
+  print('从 (0,0) 到 (3,4) 的角度: ${AngleConverter.toDegrees(angle)}°');
+}
+```
+
+### 4.5 反三角函数对照表
+
+| 函数          | 说明         | 定义域             | 值域        |
+| ------------- | ------------ | ------------------ | ----------- |
+| `asin(x)`     | 反正弦       | [-1, 1]            | [-π/2, π/2] |
+| `acos(x)`     | 反余弦       | [-1, 1]            | [0, π]      |
+| `atan(x)`     | 反正切       | 所有实数           | (-π/2, π/2) |
+| `atan2(y, x)` | 双参数反正切 | 所有实数（除原点） | (-π, π]     |
+
+---
+
+## 5. 指数与对数函数
+
+### 5.1 指数函数 exp
+
+`exp(x)` 返回 e 的 x 次幂（e^x）。
+
+```dart
+void expDemo() {
+  // exp(0) = 1
+  print('exp(0) = ${exp(0)}');  // 1.0
+
+  // exp(1) = e
+  print('exp(1) = ${exp(1)}');  // 2.7182...
+
+  // exp(2) = e²
+  print('exp(2) = ${exp(2)}');  // 7.389...
+
+  // 复利计算
+  // A = P * e^(rt)
+  final principal = 1000.0;
+  final rate = 0.05;
+  final time = 10.0;
+  final amount = principal * exp(rate * time);
+  print('本金 $principal，年利率 $rate，$time 年后: $amount');
+}
+```
+
+### 5.2 自然对数 log
+
+`log(x)` 返回 x 的自然对数（以 e 为底）。
+
+```dart
+void logDemo() {
+  // log(1) = 0
+  print('log(1) = ${log(1)}');  // 0.0
+
+  // log(e) = 1
+  print('log(e) = ${log(e)}');  // 1.0
+
+  // log(e²) = 2
+  print('log(e²) = ${log(exp(2))}');  // 2.0
+
+  // 换底公式: log_a(b) = log(b) / log(a)
+  double logBase(double a, double b) => log(b) / log(a);
+
+  print('log₁₀(100) = ${logBase(10, 100)}');  // 2.0
+  print('log₂(8) = ${logBase(2, 8)}');  // 3.0
+}
+```
+
+### 5.3 幂函数 pow
+
+`pow(x, exponent)` 返回 x 的 exponent 次幂。
+
+```dart
+void powDemo() {
+  // 平方
+  print('pow(2, 2) = ${pow(2, 2)}');  // 4
+
+  // 立方
+  print('pow(3, 3) = ${pow(3, 3)}');  // 27
+
+  // 开方（分数指数）
+  print('pow(16, 0.5) = ${pow(16, 0.5)}');  // 4.0 (平方根)
+  print('pow(27, 1/3) = ${pow(27, 1 / 3)}');  // 3.0 (立方根)
+
+  // 负指数
+  print('pow(2, -1) = ${pow(2, -1)}');  // 0.5 (倒数)
+
+  // 勾股定理
+  final a = 3.0;
+  final b = 4.0;
+  final c = sqrt(pow(a, 2) + pow(b, 2));
+  print('直角三角形斜边: $c');
+}
+```
+
+### 5.4 指数对数对照表
+
+| 函数        | 说明  | 示例          |
+| ----------- | ----- | ------------- |
+| `exp(x)`    | e^x   | exp(1) = e    |
+| `log(x)`    | ln(x) | log(e) = 1    |
+| `pow(x, y)` | x^y   | pow(2, 3) = 8 |
+
+---
+
+## 6. 其他数学函数
+
+### 6.1 平方根 sqrt
+
+```dart
+void sqrtDemo() {
+  // sqrt(4) = 2
+  print('sqrt(4) = ${sqrt(4)}');  // 2.0
+
+  // sqrt(2) = √2
+  print('sqrt(2) = ${sqrt(2)}');  // 1.4142...
+
+  // 勾股定理
+  final a = 3.0;
+  final b = 4.0;
+  final c = sqrt(a * a + b * b);
+  print('直角三角形斜边: $c');  // 5.0
+
+  // 计算标准差
+  final values = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+  final mean = values.reduce((a, b) => a + b) / values.length;
+  final variance = values.map((x) => pow(x - mean, 2)).reduce((a, b) => a + b) / values.length;
+  final stdDev = sqrt(variance);
+  print('标准差: $stdDev');
+}
+```
+
+### 6.2 最大值 max 和最小值 min
+
+```dart
+void maxMinDemo() {
+  // 两个数比较
+  print('max(10, 20) = ${max(10, 20)}');  // 20
+  print('min(10, 20) = ${min(10, 20)}');  // 10
+
+  // 列表中的最大值和最小值
+  final numbers = [5, 2, 8, 1, 9, 3];
+  final maxVal = numbers.reduce((a, b) => max(a, b));
+  final minVal = numbers.reduce((a, b) => min(a, b));
+  print('最大值: $maxVal, 最小值: $minVal');
+
+  // 限制值在范围内
+  int clamp(int value, int minVal, int maxVal) {
+    return min(max(value, minVal), maxVal);
+  }
+
+  print('clamp(15, 0, 10) = ${clamp(15, 0, 10)}');  // 10
+  print('clamp(-5, 0, 10) = ${clamp(-5, 0, 10)}');  // 0
+  print('clamp(5, 0, 10) = ${clamp(5, 0, 10)}');  // 5
+}
+```
+
+### 6.3 数值处理函数汇总
+
+```dart
+void numberFunctions() {
+  // 绝对值 (来自 dart:core)
+  print('(-5).abs() = ${(-5).abs()}');  // 5
+
+  // 四舍五入 (来自 dart:core)
+  print('3.7.round() = ${3.7.round()}');  // 4
+  print('3.2.round() = ${3.2.round()}');  // 3
+
+  // 向上取整
+  print('3.1.ceil() = ${3.1.ceil()}');  // 4
+
+  // 向下取整
+  print('3.9.floor() = ${3.9.floor()}');  // 3
+
+  // 截断小数
+  print('3.9.truncate() = ${3.9.truncate()}');  // 3
+
+  // 取余
+  print('10.remainder(3) = ${10.remainder(3)}');  // 1
+}
+```
+
+---
+
+## 7. Random 随机数生成器
+
+`Random` 类用于生成伪随机数，支持生成 `bool`、`int` 和 `double` 类型的随机值。
+
+### 7.1 创建 Random 实例
+
+```dart
+void randomBasics() {
+  // 普通随机数生成器（基于时间种子）
+  final random = Random();
+
+  // 指定种子的随机数生成器（可重现的随机序列）
+  final seededRandom = Random(42);
+
+  // 密码学安全的随机数生成器
+  final secureRandom = Random.secure();
+}
+```
+
+### 7.2 生成随机整数
+
+```dart
+void randomInt() {
+  final random = Random();
+
+  // 生成 [0, 10) 范围内的整数
+  final int0to9 = random.nextInt(10);
+  print('0-9 的随机数: $int0to9');
+
+  // 生成 [1, 6] 范围内的整数（骰子）
+  final dice = random.nextInt(6) + 1;
+  print('骰子点数: $dice');
+
+  // 生成 [min, max] 范围内的整数
+  int randomInt(int min, int max) => min + random.nextInt(max - min + 1);
+
+  print('10-20 的随机数: ${randomInt(10, 20)}');
+}
+```
+
+### 7.3 生成随机浮点数
+
+```dart
+void randomDouble() {
+  final random = Random();
+
+  // 生成 [0.0, 1.0) 范围内的浮点数
+  final double0to1 = random.nextDouble();
+  print('0.0-1.0 的随机数: $double0to1');
+
+  // 生成 [0.0, 100.0) 范围内的浮点数
+  final double0to100 = random.nextDouble() * 100;
+  print('0.0-100.0 的随机数: $double0to100');
+
+  // 生成 [min, max) 范围内的浮点数
+  double randomDouble(double min, double max) {
+    return min + random.nextDouble() * (max - min);
+  }
+
+  print('5.0-10.0 的随机数: ${randomDouble(5.0, 10.0)}');
+}
+```
+
+### 7.4 生成随机布尔值
+
+```dart
+void randomBool() {
+  final random = Random();
+
+  // 50% 概率为 true
+  final coinFlip = random.nextBool();
+  print('抛硬币: ${coinFlip ? "正面" : "反面"}');
+
+  // 模拟概率事件
+  bool chance(double probability) {
+    return random.nextDouble() < probability;
+  }
+
+  print('30% 概率事件: ${chance(0.3)}');
+}
+```
+
+### 7.5 随机选择
+
+```dart
+void randomSelection() {
+  final random = Random();
+
+  // 从列表中随机选择
+  final fruits = ['苹果', '香蕉', '橙子', '葡萄', '西瓜'];
+  final randomFruit = fruits[random.nextInt(fruits.length)];
+  print('随机水果: $randomFruit');
+
+  // 随机打乱列表
+  final numbers = [1, 2, 3, 4, 5];
+  numbers.shuffle(random);
+  print('打乱后的列表: $numbers');
+
+  // 生成随机颜色
+  String randomColor() {
+    final r = random.nextInt(256);
+    final g = random.nextInt(256);
+    final b = random.nextInt(256);
+    return '#${r.toRadixString(16).padLeft(2, '0')}'
+           '${g.toRadixString(16).padLeft(2, '0')}'
+           '${b.toRadixString(16).padLeft(2, '0')}';
+  }
+
+  print('随机颜色: ${randomColor()}');
+}
+```
+
+### 7.6 随机数生成器完整示例
+
+```dart
+class RandomGenerator {
+  final Random _random;
+
+  RandomGenerator([int? seed]) : _random = seed != null ? Random(seed) : Random();
+
+  /// 生成 [min, max] 范围内的整数
+  int integer(int min, int max) => min + _random.nextInt(max - min + 1);
+
+  /// 生成 [min, max) 范围内的浮点数
+  double floating(double min, double max) => min + _random.nextDouble() * (max - min);
+
+  /// 从列表中随机选择
+  T choice<T>(List<T> list) => list[_random.nextInt(list.length)];
+
+  /// 按权重随机选择
+  T weightedChoice<T>(Map<T, double> weights) {
+    final total = weights.values.reduce((a, b) => a + b);
+    var point = _random.nextDouble() * total;
+
+    for (final entry in weights.entries) {
+      point -= entry.value;
+      if (point <= 0) return entry.key;
+    }
+
+    return weights.keys.last;
+  }
+
+  /// 生成正态分布随机数（Box-Muller 变换）
+  double normal({double mean = 0, double stdDev = 1}) {
+    final u1 = _random.nextDouble();
+    final u2 = _random.nextDouble();
+    final z0 = sqrt(-2 * log(u1)) * cos(2 * pi * u2);
+    return mean + z0 * stdDev;
+  }
+}
+
+void main() {
+  final rng = RandomGenerator(42);
+
+  print('随机整数 (1-100): ${rng.integer(1, 100)}');
+  print('随机浮点数 (0.0-1.0): ${rng.floating(0.0, 1.0)}');
+  print('随机选择: ${rng.choice(['A', 'B', 'C'])}');
+  print('正态分布: ${rng.normal(mean: 50, stdDev: 10)}');
+}
+```
+
+---
+
+## 8. Point 点类
+
+`Point<T extends num>` 是一个用于表示二维位置的不可变类。
+
+### 8.1 创建 Point
+
+```dart
+void pointBasics() {
+  // 创建整数坐标点
+  final p1 = Point(3, 4);
+  print('点 p1: ($p1.x, $p1.y)');
+
+  // 创建浮点数坐标点
+  final p2 = Point(3.5, 4.5);
+  print('点 p2: ($p2.x, $p2.y)');
+
+  // 使用 const 构造函数
+  const origin = Point(0, 0);
+  print('原点: $origin');
+}
+```
+
+### 8.2 Point 的属性
+
+| 属性        | 类型   | 说明                     |
+| ----------- | ------ | ------------------------ |
+| `x`         | T      | x 坐标                   |
+| `y`         | T      | y 坐标                   |
+| `magnitude` | double | 到原点的距离（向量的模） |
+
+```dart
+void pointProperties() {
+  final point = Point(3, 4);
+
+  print('x 坐标: ${point.x}');  // 3
+  print('y 坐标: ${point.y}');  // 4
+  print('到原点距离: ${point.magnitude}');  // 5.0
+}
+```
+
+### 8.3 Point 的运算
+
+```dart
+void pointOperations() {
+  final p1 = Point(3, 4);
+  final p2 = Point(1, 2);
+
+  // 加法
+  final sum = p1 + p2;
+  print('p1 + p2 = ($sum.x, $sum.y)');  // (4, 6)
+
+  // 减法
+  final diff = p1 - p2;
+  print('p1 - p2 = ($diff.x, $diff.y)');  // (2, 2)
+
+  // 标量乘法
+  final scaled = p1 * 2;
+  print('p1 * 2 = ($scaled.x, $scaled.y)');  // (6, 8)
+}
+```
+
+### 8.4 Point 的方法
+
+| 方法                       | 返回类型 | 说明               |
+| -------------------------- | -------- | ------------------ |
+| `distanceTo(other)`        | double   | 到另一点的距离     |
+| `squaredDistanceTo(other)` | T        | 到另一点的距离平方 |
+
+```dart
+void pointMethods() {
+  final p1 = Point(0, 0);
+  final p2 = Point(3, 4);
+
+  // 计算两点间距离
+  final distance = p1.distanceTo(p2);
+  print('p1 到 p2 的距离: $distance');  // 5.0
+
+  // 计算距离平方（避免开方运算，性能更好）
+  final squaredDist = p1.squaredDistanceTo(p2);
+  print('p1 到 p2 的距离平方: $squaredDist');  // 25
+}
+```
+
+### 8.5 Point 应用示例
+
+```dart
+void pointApplications() {
+  // 1. 计算三角形面积
+  double triangleArea(Point a, Point b, Point c) {
+    return 0.5 * ((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)).abs();
+  }
+
+  // 2. 判断点是否在圆内
+  bool isPointInCircle(Point center, double radius, Point point) {
+    return center.distanceTo(point) <= radius;
+  }
+
+  // 3. 计算向量夹角
+  double angleBetween(Point a, Point b) {
+    final dot = a.x * b.x + a.y * b.y;
+    final magA = a.magnitude;
+    final magB = b.magnitude;
+    return acos(dot / (magA * magB));
+  }
+
+  // 4. 线性插值
+  Point lerp(Point a, Point b, double t) {
+    return Point(
+      a.x + (b.x - a.x) * t,
+      a.y + (b.y - a.y) * t,
+    );
+  }
+
+  // 示例
+  final a = Point(0, 0);
+  final b = Point(3, 4);
+  final c = Point(6, 0);
+
+  print('三角形面积: ${triangleArea(a, b, c)}');
+  print('点 (2,2) 在圆内: ${isPointInCircle(Point(0, 0), 5, Point(2, 2))}');
+  print('向量夹角: ${angleBetween(Point(1, 0), Point(0, 1)) * 180 / pi}°');
+  print('插值点 (t=0.5): ${lerp(a, b, 0.5)}');
+}
+```
+
+---
+
+## 9. Rectangle 矩形类
+
+`Rectangle<T extends num>` 是一个用于表示二维轴对齐矩形的不可变类。
+
+### 9.1 创建 Rectangle
+
+```dart
+void rectangleBasics() {
+  // 方式1：使用 left, top, width, height
+  final rect1 = Rectangle(10, 20, 100, 50);
+  print('矩形1: $rect1');
+
+  // 方式2：使用两个点
+  final topLeft = Point(10, 20);
+  final bottomRight = Point(110, 70);
+  final rect2 = Rectangle.fromPoints(topLeft, bottomRight);
+  print('矩形2: $rect2');
+
+  // const 构造函数
+  const unitRect = Rectangle(0, 0, 1, 1);
+  print('单位矩形: $unitRect');
+}
+```
+
+### 9.2 Rectangle 的属性
+
+| 属性          | 类型     | 说明                          |
+| ------------- | -------- | ----------------------------- |
+| `left`        | T        | 左边缘 x 坐标                 |
+| `top`         | T        | 上边缘 y 坐标                 |
+| `width`       | T        | 宽度                          |
+| `height`      | T        | 高度                          |
+| `right`       | T        | 右边缘 x 坐标（left + width） |
+| `bottom`      | T        | 下边缘 y 坐标（top + height） |
+| `topLeft`     | Point<T> | 左上角点                      |
+| `topRight`    | Point<T> | 右上角点                      |
+| `bottomLeft`  | Point<T> | 左下角点                      |
+| `bottomRight` | Point<T> | 右下角点                      |
+
+```dart
+void rectangleProperties() {
+  final rect = Rectangle(10, 20, 100, 50);
+
+  print('''
+矩形属性:
+  left: ${rect.left}
+  top: ${rect.top}
+  width: ${rect.width}
+  height: ${rect.height}
+  right: ${rect.right}
+  bottom: ${rect.bottom}
+  topLeft: ${rect.topLeft}
+  topRight: ${rect.topRight}
+  bottomLeft: ${rect.bottomLeft}
+  bottomRight: ${rect.bottomRight}
+  ''');
+}
+```
+
+### 9.3 Rectangle 的方法
+
+| 方法                       | 返回类型      | 说明                   |
+| -------------------------- | ------------- | ---------------------- |
+| `containsPoint(point)`     | bool          | 点是否在矩形内         |
+| `containsRectangle(other)` | bool          | 是否完全包含另一个矩形 |
+| `intersects(other)`        | bool          | 是否与另一个矩形相交   |
+| `intersection(other)`      | Rectangle<T>? | 计算交集矩形           |
+| `boundingBox(other)`       | Rectangle<T>  | 计算包围盒             |
+
+```dart
+void rectangleMethods() {
+  final rect1 = Rectangle(0, 0, 100, 100);
+  final rect2 = Rectangle(50, 50, 100, 100);
+  final point = Point(30, 30);
+
+  // 点是否在矩形内
+  print('点在 rect1 内: ${rect1.containsPoint(point)}');  // true
+
+  // 矩形相交判断
+  print('rect1 与 rect2 相交: ${rect1.intersects(rect2)}');  // true
+
+  // 计算交集
+  final intersection = rect1.intersection(rect2);
+  print('交集: $intersection');  // Rectangle(50, 50, 50, 50)
+
+  // 计算包围盒
+  final boundingBox = rect1.boundingBox(rect2);
+  print('包围盒: $boundingBox');  // Rectangle(0, 0, 150, 150)
+}
+```
+
+### 9.4 Rectangle 应用示例
+
+```dart
+void rectangleApplications() {
+  // 1. 碰撞检测
+  bool checkCollision(Rectangle a, Rectangle b) {
+    return a.intersects(b);
+  }
+
+  // 2. 点在视口内检测
+  bool isInViewport(Rectangle viewport, Point point) {
+    return viewport.containsPoint(point);
+  }
+
+  // 3. 计算矩形中心
+  Point center(Rectangle rect) {
+    return Point(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+  }
+
+  // 4. 缩放矩形
+  Rectangle scale(Rectangle rect, double factor) {
+    final newWidth = rect.width * factor;
+    final newHeight = rect.height * factor;
+    final offsetX = (rect.width - newWidth) / 2;
+    final offsetY = (rect.height - newHeight) / 2;
+    return Rectangle(
+      rect.left + offsetX,
+      rect.top + offsetY,
+      newWidth,
+      newHeight,
+    );
+  }
+
+  // 示例
+  final player = Rectangle(10, 10, 50, 50);
+  final enemy = Rectangle(40, 40, 50, 50);
+  final viewport = Rectangle(0, 0, 800, 600);
+
+  print('碰撞检测: ${checkCollision(player, enemy)}');
+  print('点在视口内: ${isInViewport(viewport, Point(100, 100))}');
+  print('矩形中心: ${center(player)}');
+  print('缩放后的矩形: ${scale(player, 2)}');
+}
+```
+
+---
+
+## 10. MutableRectangle 可变矩形类
+
+`MutableRectangle<T extends num>` 是 `Rectangle` 的可变版本，允许修改其属性。
+
+> **注意**：官方文档建议新代码优先使用 `Rectangle` 或 Flutter 的 `Rect` 类。
+
+### 10.1 创建 MutableRectangle
+
+```dart
+void mutableRectangleBasics() {
+  // 创建可变矩形
+  final rect = MutableRectangle(10, 20, 100, 50);
+  print('初始矩形: $rect');
+
+  // 从两个点创建
+  final rect2 = MutableRectangle.fromPoints(
+    Point(0, 0),
+    Point(100, 100),
+  );
+  print('从点创建: $rect2');
+}
+```
+
+### 10.2 MutableRectangle 的可变属性
+
+| 属性     | 类型       | 说明          |
+| -------- | ---------- | ------------- |
+| `left`   | T (可读写) | 左边缘 x 坐标 |
+| `top`    | T (可读写) | 上边缘 y 坐标 |
+| `width`  | T (可读写) | 宽度          |
+| `height` | T (可读写) | 高度          |
+
+```dart
+void mutableRectangleModification() {
+  final rect = MutableRectangle(10, 20, 100, 50);
+
+  // 修改位置
+  rect.left = 30;
+  rect.top = 40;
+  print('移动后: $rect');
+
+  // 修改大小
+  rect.width = 200;
+  rect.height = 100;
+  print('缩放后: $rect');
+
+  // 只读属性仍然可用
+  print('right: ${rect.right}');
+  print('bottom: ${rect.bottom}');
+}
+```
+
+---
+
+## 11. 实战应用示例
+
+### 11.1 2D 物理引擎基础
+
+```dart
+class Vector2 {
+  double x, y;
+
+  Vector2(this.x, this.y);
+
+  double get magnitude => sqrt(x * x + y * y);
+
+  Vector2 operator +(Vector2 other) => Vector2(x + other.x, y + other.y);
+  Vector2 operator -(Vector2 other) => Vector2(x - other.x, y - other.y);
+  Vector2 operator *(double scalar) => Vector2(x * scalar, y * scalar);
+
+  Vector2 normalize() {
+    final m = magnitude;
+    return m == 0 ? Vector2(0, 0) : Vector2(x / m, y / m);
+  }
+
+  double dot(Vector2 other) => x * other.x + y * other.y;
+
+  static double distance(Vector2 a, Vector2 b) {
+    return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+  }
+}
+
+class Ball {
+  Vector2 position;
+  Vector2 velocity;
+  double radius;
+  double mass;
+
+  Ball(this.position, this.velocity, this.radius, this.mass);
+
+  void update(double dt) {
+    position = position + velocity * dt;
+  }
+
+  bool collidesWith(Ball other) {
+    final dist = Vector2.distance(position, other.position);
+    return dist < radius + other.radius;
+  }
+
+  void resolveCollision(Ball other) {
+    final normal = Vector2(
+      other.position.x - position.x,
+      other.position.y - position.y,
+    ).normalize();
+
+    // 弹性碰撞公式简化版
+    final relativeVelocity = velocity - other.velocity;
+    final speed = relativeVelocity.dot(normal);
+
+    if (speed > 0) return;
+
+    final impulse = 2 * speed / (mass + other.mass);
+    velocity = velocity - normal * impulse * other.mass;
+    other.velocity = other.velocity + normal * impulse * mass;
+  }
+}
+```
+
+### 11.2 随机地图生成
+
+```dart
+class MapGenerator {
+  final Random _random;
+
+  MapGenerator([int? seed]) : _random = seed != null ? Random(seed) : Random();
+
+  /// 生成 Perlin 噪声风格的随机高度图
+  List<List<double>> generateHeightMap(int width, int height) {
+    final map = List.generate(height, (_) => List<double>.filled(width, 0));
+
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        // 叠加多个频率的噪声
+        var value = 0.0;
+        var amplitude = 1.0;
+        var frequency = 0.01;
+
+        for (var i = 0; i < 4; i++) {
+          value += sin(x * frequency) * cos(y * frequency) * amplitude;
+          amplitude *= 0.5;
+          frequency *= 2;
+        }
+
+        map[y][x] = (value + 1) / 2;  // 归一化到 [0, 1]
+      }
+    }
+
+    return map;
+  }
+
+  /// 生成随机房间
+  List<Rectangle> generateRooms(int count, Rectangle bounds) {
+    final rooms = <Rectangle>[];
+
+    for (var i = 0; i < count; i++) {
+      final width = _random.nextInt(50) + 20;
+      final height = _random.nextInt(50) + 20;
+      final left = _random.nextInt(bounds.width.toInt() - width);
+      final top = _random.nextInt(bounds.height.toInt() - height);
+
+      final room = Rectangle(left, top, width, height);
+
+      // 检查重叠
+      bool overlaps = rooms.any((r) => r.intersects(room));
+      if (!overlaps) {
+        rooms.add(room);
+      }
+    }
+
+    return rooms;
+  }
+}
+```
+
+### 11.3 图形变换工具
+
+```dart
+class Transform2D {
+  double x, y;  // 平移
+  double rotation;  // 旋转（弧度）
+  double scaleX, scaleY;  // 缩放
+
+  Transform2D({
+    this.x = 0,
+    this.y = 0,
+    this.rotation = 0,
+    this.scaleX = 1,
+    this.scaleY = 1,
+  });
+
+  /// 变换点
+  Point transform(Point p) {
+    // 缩放
+    var nx = p.x * scaleX;
+    var ny = p.y * scaleY;
+
+    // 旋转
+    final cosR = cos(rotation);
+    final sinR = sin(rotation);
+    final rx = nx * cosR - ny * sinR;
+    final ry = nx * sinR + ny * cosR;
+
+    // 平移
+    return Point(rx + x, ry + y);
+  }
+
+  /// 逆变换点
+  Point inverseTransform(Point p) {
+    // 逆平移
+    var nx = p.x - x;
+    var ny = p.y - y;
+
+    // 逆旋转
+    final cosR = cos(-rotation);
+    final sinR = sin(-rotation);
+    final rx = nx * cosR - ny * sinR;
+    final ry = nx * sinR + ny * cosR;
+
+    // 逆缩放
+    return Point(rx / scaleX, ry / scaleY);
+  }
+}
+
+void transformDemo() {
+  final transform = Transform2D(
+    x: 100,
+    y: 100,
+    rotation: pi / 4,
+    scaleX: 2,
+    scaleY: 2,
+  );
+
+  final point = Point(10, 0);
+  final transformed = transform.transform(point);
+  print('原始点: $point');
+  print('变换后: $transformed');
+}
+```
+
+### 11.4 统计分析工具
+
+```dart
+class Statistics {
+  /// 计算平均值
+  static double mean(List<double> values) {
+    return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  /// 计算方差
+  static double variance(List<double> values) {
+    final m = mean(values);
+    final squaredDiffs = values.map((x) => pow(x - m, 2));
+    return squaredDiffs.reduce((a, b) => a + b) / values.length;
+  }
+
+  /// 计算标准差
+  static double standardDeviation(List<double> values) {
+    return sqrt(variance(values));
+  }
+
+  /// 计算中位数
+  static double median(List<double> values) {
+    final sorted = List<double>.from(values)..sort();
+    final n = sorted.length;
+    if (n % 2 == 0) {
+      return (sorted[n ~/ 2 - 1] + sorted[n ~/ 2]) / 2;
+    } else {
+      return sorted[n ~/ 2];
+    }
+  }
+
+  /// 计算百分位数
+  static double percentile(List<double> values, double p) {
+    final sorted = List<double>.from(values)..sort();
+    final index = (sorted.length - 1) * p / 100;
+    final lower = index.floor();
+    final upper = index.ceil();
+
+    if (lower == upper) return sorted[lower];
+
+    final weight = index - lower;
+    return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+  }
+
+  /// 生成正态分布随机数
+  static List<double> generateNormal(int count, double mean, double stdDev, [int? seed]) {
+    final random = seed != null ? Random(seed) : Random();
+    final result = <double>[];
+
+    for (var i = 0; i < count; i++) {
+      // Box-Muller 变换
+      final u1 = random.nextDouble();
+      final u2 = random.nextDouble();
+      final z0 = sqrt(-2 * log(u1)) * cos(2 * pi * u2);
+      result.add(mean + z0 * stdDev);
+    }
+
+    return result;
+  }
+}
+
+void statisticsDemo() {
+  final data = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+
+  print('数据: $data');
+  print('平均值: ${Statistics.mean(data)}');
+  print('中位数: ${Statistics.median(data)}');
+  print('标准差: ${Statistics.standardDeviation(data)}');
+  print('75% 分位数: ${Statistics.percentile(data, 75)}');
+}
+```
+
+---
+
+## 12. 附录：速查表
+
+### 12.1 数学常数
+
+| 常量      | 值                 |
+| --------- | ------------------ |
+| `pi`      | 3.141592653589793  |
+| `e`       | 2.718281828459045  |
+| `ln2`     | 0.6931471805599453 |
+| `ln10`    | 2.302585092994046  |
+| `log2e`   | 1.4426950408889634 |
+| `log10e`  | 0.4342944819032518 |
+| `sqrt2`   | 1.4142135623730951 |
+| `sqrt1_2` | 0.7071067811865476 |
+
+### 12.2 三角函数
+
+| 函数          | 说明         | 定义域       | 值域        |
+| ------------- | ------------ | ------------ | ----------- |
+| `sin(x)`      | 正弦         | 所有实数     | [-1, 1]     |
+| `cos(x)`      | 余弦         | 所有实数     | [-1, 1]     |
+| `tan(x)`      | 正切         | x ≠ π/2 + kπ | 所有实数    |
+| `asin(x)`     | 反正弦       | [-1, 1]      | [-π/2, π/2] |
+| `acos(x)`     | 反余弦       | [-1, 1]      | [0, π]      |
+| `atan(x)`     | 反正切       | 所有实数     | (-π/2, π/2) |
+| `atan2(y, x)` | 双参数反正切 | 所有实数     | (-π, π]     |
+
+### 12.3 其他函数
+
+| 函数        | 说明       |
+| ----------- | ---------- |
+| `exp(x)`    | e^x        |
+| `log(x)`    | ln(x)      |
+| `pow(x, y)` | x^y        |
+| `sqrt(x)`   | √x         |
+| `max(a, b)` | 返回较大值 |
+| `min(a, b)` | 返回较小值 |
+
+### 12.4 角度弧度转换
+
+```dart
+// 角度转弧度
+double toRadians(double degrees) => degrees * pi / 180;
+
+// 弧度转角度
+double toDegrees(double radians) => radians * 180 / pi;
+```
+
+### 12.5 Random 常用方法
+
+| 方法           | 说明                      |
+| -------------- | ------------------------- |
+| `nextInt(n)`   | [0, n) 范围内的整数       |
+| `nextDouble()` | [0.0, 1.0) 范围内的浮点数 |
+| `nextBool()`   | true 或 false             |
+
+### 12.6 Point 常用方法
+
+| 方法                       | 说明               |
+| -------------------------- | ------------------ |
+| `distanceTo(other)`        | 到另一点的距离     |
+| `squaredDistanceTo(other)` | 到另一点的距离平方 |
+
+### 12.7 Rectangle 常用方法
+
+| 方法                       | 说明                 |
+| -------------------------- | -------------------- |
+| `containsPoint(point)`     | 点是否在矩形内       |
+| `containsRectangle(other)` | 是否包含另一个矩形   |
+| `intersects(other)`        | 是否与另一个矩形相交 |
+| `intersection(other)`      | 计算交集             |
+| `boundingBox(other)`       | 计算包围盒           |
+
+---
+
+## 总结
+
+dart:math 是 Dart 生态系统中用于数学计算的核心库，它提供了：
+
+1. **数学常数**：π、e、√2 等常用常数
+
+2. **三角函数**：sin、cos、tan 及其反函数
+
+3. **指数对数**：exp、log、pow 等函数
+
+4. **其他函数**：sqrt、max、min 等实用函数
+
+5. **随机数生成**：Random 类支持多种随机数生成
+
+6. **几何类**：Point、Rectangle、MutableRectangle 用于几何计算
+
+掌握 dart:math，你将能够进行科学计算、图形处理、游戏开发等各种数学相关的编程任务。

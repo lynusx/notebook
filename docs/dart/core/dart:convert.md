@@ -1,0 +1,1331 @@
+# Dart 核心库 dart:convert 详解
+
+`dart:convert` 是 Dart 语言的核心库之一，提供了用于在不同数据表示之间进行转换的编码器和解码器。该库主要包含三大类功能：JSON 编解码、UTF-8 等字符编码、以及 Base64 等二进制编码。此外，`dart:convert` 还提供了一套灵活的 `Codec` 和 `Converter` 框架，允许开发者创建自定义的编解码器，并通过流式转换高效处理大量数据。
+
+本章将系统且全面地介绍 `dart:convert` 库的核心类和功能，包括 JSON 编解码、字符编码、Base64 编码、行分割器以及编解码器框架等内容，配合大量实例代码，帮助读者深入理解并熟练运用 Dart 的数据转换能力。
+
+## 第1章 JSON 编解码
+
+JSON（JavaScript Object Notation）是一种轻量级的数据交换格式，广泛应用于 Web API、配置文件和数据存储等场景。`dart:convert` 库提供了强大的 JSON 编解码功能。
+
+### 1.1 jsonDecode - JSON 解码
+
+`jsonDecode` 函数将 JSON 格式的字符串解析为 Dart 对象。
+
+#### 1.1.1 基本用法
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 解析简单对象
+  var jsonString = '{"name": "Alice", "age": 25}';
+  var person = jsonDecode(jsonString);
+  print(person);  // 输出: {name: Alice, age: 25}
+  print(person['name']);  // 输出: Alice
+  print(person['age']);   // 输出: 25
+  
+  // 解析数组
+  var arrayJson = '[1, 2, 3, 4, 5]';
+  var numbers = jsonDecode(arrayJson);
+  print(numbers);  // 输出: [1, 2, 3, 4, 5]
+  
+  // 解析嵌套对象
+  var nestedJson = '''
+  {
+    "user": {
+      "name": "Bob",
+      "email": "bob@example.com"
+    },
+    "orders": [
+      {"id": 1, "total": 100},
+      {"id": 2, "total": 200}
+    ]
+  }
+  ''';
+  var data = jsonDecode(nestedJson);
+  print(data['user']['name']);      // 输出: Bob
+  print(data['orders'][0]['total']); // 输出: 100
+}
+```
+
+#### 1.1.2 类型转换
+
+`jsonDecode` 返回的是 `dynamic` 类型，通常需要进行类型转换以获得类型安全。
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var jsonString = '{"name": "Alice", "age": 25, "scores": [85, 90, 95]}';
+  var decoded = jsonDecode(jsonString);
+  
+  // 安全类型转换
+  var name = decoded['name'] as String;
+  var age = decoded['age'] as int;
+  var scores = (decoded['scores'] as List).cast<int>();
+  
+  print('Name: $name, Age: $age');
+  print('Scores: $scores');
+  
+  // 处理可能为 null 的字段
+  var nickname = decoded['nickname'] as String?;
+  print('Nickname: ${nickname ?? "N/A"}');
+  
+  // 处理复杂嵌套结构
+  var usersJson = '''
+  [
+    {"id": 1, "name": "Alice"},
+    {"id": 2, "name": "Bob"}
+  ]
+  ''';
+  var users = (jsonDecode(usersJson) as List)
+    .cast<Map<String, dynamic>>();
+  
+  for (var user in users) {
+    print('User ${user['id']}: ${user['name']}');
+  }
+}
+```
+
+#### 1.1.3 带 reviver 的解码
+
+`jsonDecode` 支持 `reviver` 参数，可以在解析过程中转换每个对象或数组元素。
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var jsonString = '''
+  {
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-16T14:45:00Z",
+    "data": {"value": 42}
+  }
+  ''';
+  
+  // 使用 reviver 自动转换日期字符串
+  var result = jsonDecode(jsonString, reviver: (key, value) {
+    // 检测日期字符串并转换
+    if (key != null && key.toString().endsWith('_at') && value is String) {
+      try {
+        return DateTime.parse(value);
+      } catch (_) {
+        return value;
+      }
+    }
+    return value;
+  });
+  
+  print(result['created_at']);  // 输出: 2024-01-15 10:30:00.000Z
+  print(result['created_at'] is DateTime);  // 输出: true
+}
+```
+
+### 1.2 jsonEncode - JSON 编码
+
+`jsonEncode` 函数将 Dart 对象转换为 JSON 格式的字符串。
+
+#### 1.2.1 基本用法
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 编码 Map
+  var person = {'name': 'Alice', 'age': 25};
+  var jsonString = jsonEncode(person);
+  print(jsonString);  // 输出: {"name":"Alice","age":25}
+  
+  // 编码 List
+  var numbers = [1, 2, 3, 4, 5];
+  print(jsonEncode(numbers));  // 输出: [1,2,3,4,5]
+  
+  // 编码嵌套结构
+  var data = {
+    'user': {'name': 'Bob', 'email': 'bob@example.com'},
+    'tags': ['developer', 'dart', 'flutter'],
+    'active': true,
+    'score': null,
+  };
+  print(jsonEncode(data));
+  // 输出: {"user":{"name":"Bob","email":"bob@example.com"},"tags":["developer","dart","flutter"],"active":true,"score":null}
+}
+```
+
+#### 1.2.2 toJson 方法
+
+对于自定义类，可以实现 `toJson()` 方法来支持 JSON 编码。
+
+```dart
+import 'dart:convert';
+
+class Person {
+  final String name;
+  final int age;
+  final String? email;
+  final List<String> hobbies;
+  
+  Person({
+    required this.name,
+    required this.age,
+    this.email,
+    this.hobbies = const [],
+  });
+  
+  // 实现 toJson 方法
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'age': age,
+    if (email != null) 'email': email,
+    if (hobbies.isNotEmpty) 'hobbies': hobbies,
+  };
+  
+  // 从 JSON 创建对象
+  factory Person.fromJson(Map<String, dynamic> json) {
+    return Person(
+      name: json['name'] as String,
+      age: json['age'] as int,
+      email: json['email'] as String?,
+      hobbies: (json['hobbies'] as List?)?.cast<String>() ?? [],
+    );
+  }
+}
+
+void main() {
+  var person = Person(
+    name: 'Alice',
+    age: 25,
+    email: 'alice@example.com',
+    hobbies: ['reading', 'coding'],
+  );
+  
+  // 编码（自动调用 toJson）
+  var jsonString = jsonEncode(person);
+  print(jsonString);
+  // 输出: {"name":"Alice","age":25,"email":"alice@example.com","hobbies":["reading","coding"]}
+  
+  // 解码
+  var decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+  var restored = Person.fromJson(decoded);
+  print('${restored.name}, ${restored.age}');  // 输出: Alice, 25
+}
+```
+
+#### 1.2.3 带 toEncodable 的编码
+
+`jsonEncode` 支持 `toEncodable` 参数，用于处理无法直接编码的对象。
+
+```dart
+import 'dart:convert';
+
+class Product {
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  
+  Product(this.id, this.name, this.createdAt);
+  
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'createdAt': createdAt.toIso8601String(),
+  };
+}
+
+void main() {
+  var products = [
+    Product('P001', 'iPhone', DateTime(2024, 1, 15)),
+    Product('P002', 'iPad', DateTime(2024, 1, 16)),
+  ];
+  
+  // 使用 toEncodable 处理自定义对象
+  var jsonString = jsonEncode(products, toEncodable: (object) {
+    if (object is Product) {
+      return object.toJson();
+    }
+    return object.toString();
+  });
+  
+  print(jsonString);
+  // 输出: [{"id":"P001","name":"iPhone","createdAt":"2024-01-15T00:00:00.000"},{"id":"P002","name":"iPad","createdAt":"2024-01-16T00:00:00.000"}]
+}
+```
+
+### 1.3 JsonEncoder 和 JsonDecoder 类
+
+`JsonEncoder` 和 `JsonDecoder` 类提供了更细粒度的 JSON 编解码控制。
+
+#### 1.3.1 JsonEncoder
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var data = {'name': 'Alice', 'items': [1, 2, 3]};
+  
+  // 默认编码器
+  var encoder1 = JsonEncoder();
+  print(encoder1.convert(data));
+  // 输出: {"name":"Alice","items":[1,2,3]}
+  
+  // 带缩进的编码器
+  var encoder2 = JsonEncoder.withIndent('  ');
+  print(encoder2.convert(data));
+  // 输出:
+  // {
+  //   "name": "Alice",
+  //   "items": [
+  //     1,
+  //     2,
+  //     3
+  //   ]
+  // }
+  
+  // 自定义缩进（制表符）
+  var encoder3 = JsonEncoder.withIndent('\t');
+  print(encoder3.convert(data));
+}
+```
+
+#### 1.3.2 JsonDecoder
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var jsonString = '{"name": "Alice", "age": 25}';
+  
+  // 创建解码器
+  var decoder = JsonDecoder();
+  var result = decoder.convert(jsonString);
+  print(result);  // 输出: {name: Alice, age: 25}
+  
+  // 带 reviver 的解码器
+  var decoderWithReviver = JsonDecoder((key, value) {
+    if (key == 'age' && value is int) {
+      return value * 2;  // 将所有 age 值翻倍
+    }
+    return value;
+  });
+  
+  var result2 = decoderWithReviver.convert(jsonString);
+  print(result2);  // 输出: {name: Alice, age: 50}
+}
+```
+
+#### 1.3.3 JsonCodec
+
+`JsonCodec` 将编码器和解码器组合在一起。
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 创建编解码器
+  var codec = JsonCodec();
+  
+  // 编码
+  var data = {'message': 'Hello'};
+  var encoded = codec.encode(data);
+  print(encoded);  // 输出: {"message":"Hello"}
+  
+  // 解码
+  var decoded = codec.decode(encoded);
+  print(decoded);  // 输出: {message: Hello}
+  
+  // 带自定义配置的编解码器
+  var customCodec = JsonCodec(
+    reviver: (key, value) => value,
+    toEncodable: (object) => object.toString(),
+  );
+}
+```
+
+### 1.4 JSON 流式编解码
+
+对于大量数据，可以使用流式编解码来减少内存占用。
+
+```dart
+import 'dart:convert';
+import 'dart:async';
+
+void main() async {
+  // 流式解码
+  var jsonStream = Stream.fromIterable([
+    '{"users": [',
+    '{"name": "Alice"},',
+    '{"name": "Bob"}',
+    ']}',
+  ]);
+  
+  // 注意：JsonDecoder 不支持分块解码 JSON
+  // 需要先将流合并为完整字符串
+  var fullJson = await jsonStream.join();
+  var result = jsonDecode(fullJson);
+  print(result);
+  
+  // 使用 JsonUtf8Encoder 进行流式编码
+  var encoder = JsonUtf8Encoder();
+  var objectStream = Stream.fromIterable([
+    {'id': 1},
+    {'id': 2},
+    {'id': 3},
+  ]);
+  
+  // 将对象流转换为 UTF-8 字节流
+  var byteStream = objectStream.transform(encoder);
+  await for (var bytes in byteStream) {
+    print('Encoded bytes: $bytes');
+  }
+}
+```
+
+**Dart Tips 语法小贴士**
+
+JSON 编码的性能考虑
+
+对于大量数据的 JSON 编码，建议使用 `JsonEncoder` 的流式 API 或分批处理：
+
+```dart
+// 对于大量数据，避免一次性编码
+// 不推荐：jsonEncode(hugeList)
+
+// 推荐：分批编码
+var encoder = JsonEncoder();
+for (var chunk in hugeList.chunks(1000)) {
+  var jsonChunk = encoder.convert(chunk);
+  // 处理或发送 chunk
+}
+```
+
+## 第2章 字符编码
+
+`dart:convert` 库提供了多种字符编码的支持，包括 UTF-8、Latin-1 (ISO-8859-1) 和 ASCII。
+
+### 2.1 UTF-8 编码
+
+UTF-8 是最常用的字符编码，支持所有 Unicode 字符。
+
+#### 2.1.1 utf8 编解码器
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var text = 'Hello, 世界! 🌍';
+  
+  // 编码为 UTF-8 字节
+  List<int> bytes = utf8.encode(text);
+  print(bytes);  // 输出: [72, 101, 108, 108, 111, 44, 32, 228, 184, 150, 231, 149, 140, 33, 32, 240, 159, 140, 141]
+  
+  // 解码 UTF-8 字节
+  var decoded = utf8.decode(bytes);
+  print(decoded);  // 输出: Hello, 世界! 🌍
+  
+  // 使用编解码器对象
+  var encoded2 = utf8.encoder.convert(text);
+  print(encoded2);
+  
+  var decoded2 = utf8.decoder.convert(encoded2);
+  print(decoded2);
+}
+```
+
+#### 2.1.2 处理无效字节序列
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 包含无效 UTF-8 序列的字节
+  var invalidBytes = [0x80, 0x81, 0x82];  // 无效的 UTF-8 序列
+  
+  // 默认情况下会抛出异常
+  try {
+    utf8.decode(invalidBytes);
+  } catch (e) {
+    print('Decode error: $e');
+  }
+  
+  // 允许无效序列（替换为替换字符 U+FFFD）
+  var decoded = utf8.decode(invalidBytes, allowMalformed: true);
+  print(decoded);  // 输出: ���（替换字符）
+  
+  // 使用解码器构造函数
+  var decoder = Utf8Decoder(allowMalformed: true);
+  var result = decoder.convert(invalidBytes);
+  print(result);
+}
+```
+
+#### 2.1.3 流式 UTF-8 编解码
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+void main() async {
+  // 模拟字节流
+  var byteStream = Stream.fromIterable([
+    [72, 101, 108, 108],  // "Hell"
+    [111, 44, 32],         // "o, "
+    [228, 184, 150, 231],  // "世" 的部分
+    [149, 140],            // "世" 的剩余部分
+  ]);
+  
+  // 将字节流转换为字符串流
+  var stringStream = byteStream.transform(utf8.decoder);
+  await for (var chunk in stringStream) {
+    print('Chunk: $chunk');
+  }
+  // 输出:
+  // Chunk: Hell
+  // Chunk: o, 
+  // Chunk: 世
+  
+  // 将字符串流转换为字节流
+  var textStream = Stream.fromIterable(['Hello', ', ', 'World']);
+  var encodedStream = textStream.transform(utf8.encoder);
+  await for (var bytes in encodedStream) {
+    print('Bytes: $bytes');
+  }
+}
+```
+
+### 2.2 Latin-1 编码
+
+Latin-1 (ISO-8859-1) 是一种单字节编码，支持西欧语言。
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // Latin-1 编码
+  var text = 'Café résumé';
+  var bytes = latin1.encode(text);
+  print(bytes);  // 输出: [67, 97, 102, 233, 32, 114, 233, 115, 117, 109, 233]
+  
+  // Latin-1 解码
+  var decoded = latin1.decode(bytes);
+  print(decoded);  // 输出: Café résumé
+  
+  // 注意：Latin-1 不支持中文等非西欧字符
+  try {
+    latin1.encode('中文');  // 会抛出异常
+  } catch (e) {
+    print('Latin-1 cannot encode Chinese: $e');
+  }
+}
+```
+
+### 2.3 ASCII 编码
+
+ASCII 是最基本的字符编码，只支持 128 个字符。
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // ASCII 编码
+  var text = 'Hello, World!';
+  var bytes = ascii.encode(text);
+  print(bytes);  // 输出: [72, 101, 108, 108, 111, 44, 32, 87, 111, 114, 108, 100, 33]
+  
+  // ASCII 解码
+  var decoded = ascii.decode(bytes);
+  print(decoded);  // 输出: Hello, World!
+  
+  // ASCII 只支持 0-127 的字符
+  try {
+    ascii.encode('Café');  // é (233) 超出 ASCII 范围
+  } catch (e) {
+    print('ASCII cannot encode é: $e');
+  }
+  
+  // 允许非 ASCII 字符（替换为 ?）
+  var encoder = AsciiEncoder(allowInvalid: true);
+  var result = encoder.convert('Café');
+  print(result);  // 输出: [67, 97, 102, 63]（é 被替换为 ?）
+}
+```
+
+### 2.4 编码检测与自动选择
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var bytes = [72, 101, 108, 108, 111];  // "Hello"
+  
+  // 尝试使用不同编码解码
+  String? tryDecode(List<int> bytes, Encoding encoding) {
+    try {
+      return encoding.decode(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+  
+  // 按优先级尝试
+  var encodings = [utf8, latin1, ascii];
+  for (var encoding in encodings) {
+    var result = tryDecode(bytes, encoding);
+    if (result != null) {
+      print('Decoded with ${encoding.name}: $result');
+      break;
+    }
+  }
+}
+```
+
+## 第3章 Base64 编码
+
+Base64 是一种将二进制数据编码为 ASCII 字符串的方法，常用于数据传输和存储。
+
+### 3.1 Base64 编解码
+
+#### 3.1.1 基本用法
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 原始数据
+  var bytes = [72, 101, 108, 108, 111];  // "Hello"
+  
+  // Base64 编码
+  var encoded = base64.encode(bytes);
+  print(encoded);  // 输出: SGVsbG8=
+  
+  // Base64 解码
+  var decoded = base64.decode(encoded);
+  print(decoded);  // 输出: [72, 101, 108, 108, 111]
+  
+  // 使用编解码器
+  var encoded2 = base64.encoder.convert(bytes);
+  var decoded2 = base64.decoder.convert(encoded2);
+  print('Round-trip: $decoded2');
+}
+```
+
+#### 3.1.2 Base64 URL 安全编码
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // URL 安全的 Base64 编码（将 + 替换为 -，/ 替换为 _，省略 = 填充）
+  var bytes = [251, 252, 253, 254, 255];
+  
+  // 标准 Base64
+  var standard = base64.encode(bytes);
+  print('Standard: $standard');  // 输出: +/z9/v8=
+  
+  // URL 安全 Base64
+  var urlSafe = base64Url.encode(bytes);
+  print('URL Safe: $urlSafe');  // 输出: _/z9_v8=
+  
+  // URL 安全编码适用于 URL 参数
+  var url = 'https://example.com/data?token=$urlSafe';
+  print(url);
+}
+```
+
+#### 3.1.3 处理字符串数据
+
+```dart
+import 'dart:convert';
+
+void main() {
+  // 将字符串编码为 Base64
+  var text = 'Hello, World!';
+  var bytes = utf8.encode(text);
+  var base64String = base64.encode(bytes);
+  print('Base64: $base64String');  // 输出: SGVsbG8sIFdvcmxkIQ==
+  
+  // 解码回字符串
+  var decodedBytes = base64.decode(base64String);
+  var decodedText = utf8.decode(decodedBytes);
+  print('Decoded: $decodedText');  // 输出: Hello, World!
+  
+  // 便捷函数
+  String encodeString(String text) => base64.encode(utf8.encode(text));
+  String decodeString(String base64Text) => utf8.decode(base64.decode(base64Text));
+  
+  print(decodeString(encodeString('Test')));  // 输出: Test
+}
+```
+
+### 3.2 Base64 编码选项
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var bytes = [72, 101, 108, 108, 111];  // "Hello"
+  
+  // 标准 Base64
+  var standard = base64.encode(bytes);
+  print('Standard: $standard');  // SGVsbG8=
+  
+  // 不带填充
+  var noPadding = base64Encode(bytes, urlSafe: false, addPadding: false);
+  // 注意：dart:convert 不直接支持此选项，需要自定义
+  
+  // 使用 Base64Codec 自定义
+  var codec = Base64Codec();
+  print(codec.encode(bytes));  // SGVsbG8=
+  
+  // URL 安全编解码器
+  var urlCodec = Base64Codec.urlSafe();
+  print(urlCodec.encode([251, 252]));  // -_w=
+}
+```
+
+### 3.3 实战应用：图片 Base64 编码
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+Future<String> imageToBase64(String filePath) async {
+  var file = File(filePath);
+  var bytes = await file.readAsBytes();
+  return base64.encode(bytes);
+}
+
+Future<void> base64ToImage(String base64String, String outputPath) async {
+  var bytes = base64.decode(base64String);
+  var file = File(outputPath);
+  await file.writeAsBytes(bytes);
+}
+
+void main() async {
+  // 将图片转为 Base64（用于 Web 嵌入）
+  // var base64Image = await imageToBase64('image.png');
+  // var dataUrl = 'data:image/png;base64,$base64Image';
+  
+  // 从 Base64 恢复图片
+  // await base64ToImage(base64Image, 'restored.png');
+}
+```
+
+## 第4章 行分割器（LineSplitter）
+
+`LineSplitter` 是一个 `StreamTransformer`，用于将字符串流按行分割。
+
+### 4.1 基本用法
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var splitter = LineSplitter();
+  
+  // 分割包含不同换行符的文本
+  var text = 'Line 1\nLine 2\r\nLine 3\rLine 4';
+  var lines = splitter.convert(text);
+  
+  for (var i = 0; i < lines.length; i++) {
+    print('$i: "${lines[i]}"');
+  }
+  // 输出:
+  // 0: "Line 1"
+  // 1: "Line 2"
+  // 2: "Line 3"
+  // 3: "Line 4"
+}
+```
+
+### 4.2 流式行分割
+
+```dart
+import 'dart:convert';
+
+void main() async {
+  // 模拟逐块接收的文本流
+  var textStream = Stream.fromIterable([
+    'First line\nSecond',
+    ' line continued\nThird',
+    ' line\n',
+  ]);
+  
+  // 应用行分割转换
+  var lineStream = textStream.transform(LineSplitter());
+  
+  await for (var line in lineStream) {
+    print('Line: "$line"');
+  }
+  // 输出:
+  // Line: "First line"
+  // Line: "Second line continued"
+  // Line: "Third line"
+}
+```
+
+### 4.3 从文件读取行
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+Future<void> readFileLines(String filePath) async {
+  var file = File(filePath);
+  
+  // 方法1：读取全部内容后分割
+  var content = await file.readAsString();
+  var lines = LineSplitter.split(content);
+  for (var line in lines) {
+    print(line);
+  }
+  
+  // 方法2：流式读取（适合大文件）
+  await for (var line in file
+    .openRead()
+    .transform(utf8.decoder)
+    .transform(LineSplitter())) {
+    print(line);
+  }
+}
+
+void main() async {
+  // 创建测试文件
+  var testFile = File('test.txt');
+  await testFile.writeAsString('Line 1\nLine 2\nLine 3');
+  
+  // 读取
+  await readFileLines('test.txt');
+  
+  // 清理
+  await testFile.delete();
+}
+```
+
+### 4.4 处理标准输入
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+void main() {
+  print('Enter lines (Ctrl+D to exit):');
+  
+  stdin
+    .transform(utf8.decoder)
+    .transform(LineSplitter())
+    .listen(
+      (line) => print('Received: $line'),
+      onDone: () => print('Input closed'),
+    );
+}
+```
+
+## 第5章 Codec 和 Converter 框架
+
+`dart:convert` 库提供了一套灵活的编解码器框架，允许开发者创建自定义的编解码器。
+
+### 5.1 Codec 类
+
+`Codec<S, T>` 是一个抽象类，表示从类型 `S` 到类型 `T` 的编码和解码能力。
+
+```dart
+import 'dart:convert';
+
+// 自定义编解码器：将字符串进行简单替换加密
+class CaesarCodec extends Codec<String, String> {
+  final int shift;
+  
+  CaesarCodec(this.shift);
+  
+  @override
+  Converter<String, String> get encoder => CaesarEncoder(shift);
+  
+  @override
+  Converter<String, String> get decoder => CaesarDecoder(shift);
+  
+  @override
+  CaesarCodec get inverted => CaesarCodec(-shift);
+}
+
+class CaesarEncoder extends Converter<String, String> {
+  final int shift;
+  CaesarEncoder(this.shift);
+  
+  @override
+  String convert(String input) {
+    return input.runes.map((rune) {
+      if (rune >= 65 && rune <= 90) {  // A-Z
+        return String.fromCharCode(65 + (rune - 65 + shift) % 26);
+      } else if (rune >= 97 && rune <= 122) {  // a-z
+        return String.fromCharCode(97 + (rune - 97 + shift) % 26);
+      }
+      return String.fromCharCode(rune);
+    }).join();
+  }
+}
+
+class CaesarDecoder extends Converter<String, String> {
+  final int shift;
+  CaesarDecoder(this.shift);
+  
+  @override
+  String convert(String input) {
+    return CaesarEncoder(-shift).convert(input);
+  }
+}
+
+void main() {
+  var codec = CaesarCodec(3);  // 凯撒密码，移位3
+  
+  var original = 'Hello, World!';
+  var encoded = codec.encode(original);
+  var decoded = codec.decode(encoded);
+  
+  print('Original: $original');  // Hello, World!
+  print('Encoded: $encoded');    // Khoor, Zruog!
+  print('Decoded: $decoded');    // Hello, World!
+}
+```
+
+### 5.2 Converter 类
+
+`Converter<S, T>` 是一个抽象类，用于将数据从一种表示转换为另一种表示。
+
+```dart
+import 'dart:convert';
+
+// 自定义转换器：将整数列表转换为逗号分隔的字符串
+class IntListToCsvConverter extends Converter<List<int>, String> {
+  @override
+  String convert(List<int> input) {
+    return input.join(',');
+  }
+}
+
+// 反向转换器
+class CsvToIntListConverter extends Converter<String, List<int>> {
+  @override
+  List<int> convert(String input) {
+    if (input.isEmpty) return [];
+    return input.split(',').map(int.parse).toList();
+  }
+}
+
+void main() {
+  var numbers = [1, 2, 3, 4, 5];
+  
+  var toCsv = IntListToCsvConverter();
+  var csv = toCsv.convert(numbers);
+  print(csv);  // 输出: 1,2,3,4,5
+  
+  var fromCsv = CsvToIntListConverter();
+  var restored = fromCsv.convert(csv);
+  print(restored);  // 输出: [1, 2, 3, 4, 5]
+}
+```
+
+### 5.3 流式转换（ChunkedConversionSink）
+
+对于大量数据，可以使用 `ChunkedConversionSink` 进行流式转换。
+
+```dart
+import 'dart:convert';
+
+// 自定义流式转换器：累积所有输入后转换
+class AccumulatingConverter extends Converter<List<int>, String> {
+  @override
+  String convert(List<int> input) {
+    return String.fromCharCodes(input);
+  }
+  
+  @override
+  Sink<List<int>> startChunkedConversion(Sink<String> sink) {
+    return _AccumulatingSink(sink);
+  }
+}
+
+class _AccumulatingSink extends ChunkedConversionSink<List<int>> {
+  final Sink<String> _outputSink;
+  final List<int> _accumulated = [];
+  
+  _AccumulatingSink(this._outputSink);
+  
+  @override
+  void add(List<int> chunk) {
+    _accumulated.addAll(chunk);
+  }
+  
+  @override
+  void close() {
+    _outputSink.add(String.fromCharCodes(_accumulated));
+    _outputSink.close();
+  }
+}
+
+void main() {
+  var converter = AccumulatingConverter();
+  
+  // 创建输出 sink
+  var output = StringBuffer();
+  var sink = converter.startChunkedConversion(
+    _StringSinkAdapter(output),
+  );
+  
+  // 分块添加数据
+  sink.add([72, 101, 108]);   // "Hel"
+  sink.add([108, 111]);        // "lo"
+  sink.close();
+  
+  print(output.toString());  // 输出: Hello
+}
+
+class _StringSinkAdapter implements Sink<String> {
+  final StringBuffer _buffer;
+  _StringSinkAdapter(this._buffer);
+  
+  @override
+  void add(String data) => _buffer.write(data);
+  
+  @override
+  void close() {}
+}
+```
+
+### 5.4 组合转换器
+
+```dart
+import 'dart:convert';
+
+// 组合多个转换器
+void main() {
+  // 定义转换流程：对象 -> JSON 字符串 -> UTF-8 字节 -> Base64
+  var objectToJson = JsonEncoder();
+  var stringToUtf8 = utf8.encoder;
+  var bytesToBase64 = base64.encoder;
+  
+  // 链式转换
+  var data = {'message': 'Hello', 'count': 42};
+  
+  // 手动链式调用
+  var json = objectToJson.convert(data);
+  var bytes = stringToUtf8.convert(json);
+  var base64String = bytesToBase64.convert(bytes);
+  
+  print('Base64: $base64String');
+  
+  // 反向解码
+  var decodedBytes = base64.decoder.convert(base64String);
+  var decodedJson = utf8.decoder.convert(decodedBytes);
+  var decodedObject = JsonDecoder().convert(decodedJson);
+  
+  print('Decoded: $decodedObject');
+}
+```
+
+## 第6章 HTML 转义
+
+`HtmlEscape` 转换器用于将特殊字符转义为 HTML 实体，防止 XSS 攻击。
+
+### 6.1 基本用法
+
+```dart
+import 'dart:convert';
+
+void main() {
+  var html = '<script>alert("XSS")</script>';
+  
+  // 转义 HTML 特殊字符
+  var escaped = const HtmlEscape().convert(html);
+  print(escaped);
+  // 输出: &lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;
+  
+  // 使用不同的转义模式
+  var unknownMode = HtmlEscapeMode.unknown;
+  var attributeMode = HtmlEscapeMode.attribute;
+  var elementMode = HtmlEscapeMode.element;
+  var sqAttributeMode = HtmlEscapeMode.sqAttribute;
+  
+  // 元素模式（转义 < > & "）
+  print(HtmlEscape(elementMode).convert('<div>Hello & "World"</div>'));
+  // 输出: &lt;div&gt;Hello &amp; &quot;World&quot;&lt;/div&gt;
+  
+  // 属性模式（转义 < > & " '）
+  print(HtmlEscape(attributeMode).convert('value="test"\'s'));
+}
+```
+
+### 6.2 实战应用：安全的 HTML 渲染
+
+```dart
+import 'dart:convert';
+
+String safeHtml(String userInput) {
+  return const HtmlEscape(HtmlEscapeMode.element).convert(userInput);
+}
+
+void main() {
+  var userComment = '<b>Bold</b> <script>alert("hack")</script>';
+  var safe = safeHtml(userComment);
+  
+  // 可以安全地嵌入 HTML
+  print('<div class="comment">$safe</div>');
+  // 输出: <div class="comment">&lt;b&gt;Bold&lt;/b&gt; &lt;script&gt;alert(&quot;hack&quot;)&lt;/script&gt;</div>
+}
+```
+
+## 第7章 实战应用示例
+
+### 7.1 配置文件的读写
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+class ConfigManager {
+  final String filePath;
+  Map<String, dynamic> _config = {};
+  
+  ConfigManager(this.filePath);
+  
+  Future<void> load() async {
+    var file = File(filePath);
+    if (await file.exists()) {
+      var content = await file.readAsString();
+      _config = jsonDecode(content) as Map<String, dynamic>;
+    }
+  }
+  
+  Future<void> save() async {
+    var file = File(filePath);
+    var encoder = JsonEncoder.withIndent('  ');
+    await file.writeAsString(encoder.convert(_config));
+  }
+  
+  T? get<T>(String key) => _config[key] as T?;
+  
+  void set<T>(String key, T value) {
+    _config[key] = value;
+  }
+  
+  void remove(String key) {
+    _config.remove(key);
+  }
+}
+
+void main() async {
+  var config = ConfigManager('config.json');
+  
+  config.set('apiUrl', 'https://api.example.com');
+  config.set('timeout', 30);
+  config.set('features', {'darkMode': true, 'notifications': false});
+  
+  await config.save();
+  
+  await config.load();
+  print(config.get<String>('apiUrl'));
+  print(config.get<Map<String, dynamic>>('features'));
+}
+```
+
+### 7.2 日志文件的流式处理
+
+```dart
+import 'dart:convert';
+import 'dart:io';
+
+Stream<Map<String, dynamic>> parseLogFile(String filePath) async* {
+  var file = File(filePath);
+  
+  await for (var line in file
+    .openRead()
+    .transform(utf8.decoder)
+    .transform(LineSplitter())) {
+    if (line.trim().isEmpty) continue;
+    
+    try {
+      yield jsonDecode(line) as Map<String, dynamic>;
+    } catch (e) {
+      // 忽略无效行
+      print('Invalid log line: $line');
+    }
+  }
+}
+
+void main() async {
+  // 创建测试日志文件
+  var logFile = File('app.log');
+  var logs = [
+    {'level': 'INFO', 'message': 'Application started', 'timestamp': DateTime.now().toIso8601String()},
+    {'level': 'ERROR', 'message': 'Connection failed', 'timestamp': DateTime.now().toIso8601String()},
+    {'level': 'INFO', 'message': 'Retrying...', 'timestamp': DateTime.now().toIso8601String()},
+  ];
+  
+  await logFile.writeAsString(
+    logs.map((l) => jsonEncode(l)).join('\n'),
+  );
+  
+  // 流式解析
+  await for (var log in parseLogFile('app.log')) {
+    print('[${log['level']}] ${log['message']}');
+  }
+  
+  // 清理
+  await logFile.delete();
+}
+```
+
+### 7.3 API 响应的统一处理
+
+```dart
+import 'dart:convert';
+
+class ApiResponse<T> {
+  final bool success;
+  final T? data;
+  final String? error;
+  final int statusCode;
+  
+  ApiResponse({
+    required this.success,
+    this.data,
+    this.error,
+    required this.statusCode,
+  });
+  
+  factory ApiResponse.fromJson(
+    Map<String, dynamic> json,
+    T Function(dynamic) fromJson,
+  ) {
+    return ApiResponse(
+      success: json['success'] as bool,
+      data: json['data'] != null ? fromJson(json['data']) : null,
+      error: json['error'] as String?,
+      statusCode: json['statusCode'] as int,
+    );
+  }
+  
+  Map<String, dynamic> toJson(Object? Function(T) toJson) => {
+    'success': success,
+    if (data != null) 'data': toJson(data as T),
+    if (error != null) 'error': error,
+    'statusCode': statusCode,
+  };
+}
+
+// 使用示例
+class User {
+  final String id;
+  final String name;
+  
+  User({required this.id, required this.name});
+  
+  factory User.fromJson(dynamic json) => User(
+    id: json['id'] as String,
+    name: json['name'] as String,
+  );
+  
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+}
+
+void main() {
+  // 模拟 API 响应
+  var responseJson = '''
+  {
+    "success": true,
+    "data": {"id": "123", "name": "Alice"},
+    "statusCode": 200
+  }
+  ''';
+  
+  var decoded = jsonDecode(responseJson) as Map<String, dynamic>;
+  var response = ApiResponse<User>.fromJson(
+    decoded,
+    (data) => User.fromJson(data),
+  );
+  
+  print('Success: ${response.success}');
+  print('User: ${response.data?.name}');
+  
+  // 编码回 JSON
+  var encoder = JsonEncoder.withIndent('  ');
+  print(encoder.convert(response.toJson((u) => u.toJson())));
+}
+```
+
+### 7.4 二进制数据的序列化
+
+```dart
+import 'dart:convert';
+import 'dart:typed_data';
+
+class BinarySerializer {
+  // 将二进制数据编码为 Base64 字符串
+  static String encode(Uint8List data) {
+    return base64.encode(data);
+  }
+  
+  // 将 Base64 字符串解码为二进制数据
+  static Uint8List decode(String base64String) {
+    return Uint8List.fromList(base64.decode(base64String));
+  }
+  
+  // 创建包含二进制数据的 JSON
+  static String createBinaryJson(String name, Uint8List data) {
+    var jsonData = {
+      'name': name,
+      'data': encode(data),
+      'size': data.length,
+      'encoding': 'base64',
+    };
+    return jsonEncode(jsonData);
+  }
+  
+  // 从 JSON 提取二进制数据
+  static ({String name, Uint8List data}) extractBinaryJson(String jsonString) {
+    var decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+    return (
+      name: decoded['name'] as String,
+      data: decode(decoded['data'] as String),
+    );
+  }
+}
+
+void main() {
+  // 模拟二进制数据
+  var binaryData = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47]);  // PNG 文件头
+  
+  // 序列化
+  var json = BinarySerializer.createBinaryJson('image.png', binaryData);
+  print(json);
+  
+  // 反序列化
+  var extracted = BinarySerializer.extractBinaryJson(json);
+  print('Name: ${extracted.name}');
+  print('Data: ${extracted.data}');
+}
+```
+
+## 附录：dart:convert 核心类速查表
+
+| 类/函数 | 主要用途 | 核心方法 |
+|---------|---------|---------|
+| jsonDecode | JSON 字符串解码 | jsonDecode(string, {reviver}) |
+| jsonEncode | JSON 字符串编码 | jsonEncode(object, {toEncodable}) |
+| JsonEncoder | JSON 编码器 | convert(), JsonEncoder.withIndent() |
+| JsonDecoder | JSON 解码器 | convert(), JsonDecoder({reviver}) |
+| JsonCodec | JSON 编解码器 | encode(), decode() |
+| utf8 | UTF-8 编解码器 | encode(), decode(), encoder, decoder |
+| latin1 | Latin-1 编解码器 | encode(), decode(), encoder, decoder |
+| ascii | ASCII 编解码器 | encode(), decode(), encoder, decoder |
+| base64 | Base64 编解码器 | encode(), decode(), encoder, decoder |
+| base64Url | URL 安全 Base64 | encode(), decode(), encoder, decoder |
+| LineSplitter | 行分割器 | convert(), bind(), split() |
+| HtmlEscape | HTML 转义 | convert(), HtmlEscapeMode |
+| Codec | 编解码器基类 | encode(), decode(), encoder, decoder |
+| Converter | 转换器基类 | convert(), startChunkedConversion() |
+| ChunkedConversionSink | 流式转换 Sink | add(), close() |
+
+---
+
+本文档详细介绍了 Dart 核心库 `dart:convert` 的各类功能，包括 JSON 编解码、字符编码、Base64 编码、行分割器以及编解码器框架。掌握这些内容将帮助开发者在 Dart 和 Flutter 开发中高效地处理数据转换和序列化任务。
