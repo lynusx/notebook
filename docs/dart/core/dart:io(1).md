@@ -195,13 +195,13 @@ void fileMetadata() async {
 
   // 属性说明
   print('''
-文件元数据:
-  - 大小: ${stat.size} 字节
-  - 模式: ${stat.mode} (权限位)
-  - 修改时间: ${stat.modified}
-  - 访问时间: ${stat.accessed}
-  - 修改时间: ${stat.changed}
-  - 类型: ${stat.type}
+    文件元数据:
+      - 大小: ${stat.size} 字节
+      - 模式: ${stat.mode} (权限位)
+      - 修改时间: ${stat.modified}
+      - 访问时间: ${stat.accessed}
+      - 修改时间: ${stat.changed}
+      - 类型: ${stat.type}
   ''');
 
   // 最后修改时间

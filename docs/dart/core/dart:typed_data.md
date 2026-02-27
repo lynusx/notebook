@@ -1,0 +1,1666 @@
+# dart:typed_data 详解与实战
+
+## 内容简介
+
+`dart:typed_data` 是 Dart 核心库之一，专门用于高效处理固定大小的数值数据。它提供了一系列类型化的列表（Typed List），能够直接操作底层字节数据，避免装箱/拆箱开销，在处理二进制数据、网络通信、图像处理、科学计算等场景中具有显著的性能优势。
+
+全书共分为5章：
+
+- **第1章 核心概念**：详细介绍类型化数据的基本概念、内存布局和字节序
+- **第2章 ByteBuffer 与 ByteData**：深入讲解字节缓冲区和随机访问视图
+- **第3章 整数类型列表**：全面介绍各种位宽的整数列表及其使用场景
+- **第4章 浮点数类型列表**：详细介绍单精度和双精度浮点数列表
+- **第5章 SIMD 类型与高级应用**：介绍向量类型和实际应用案例
+
+---
+
+## 第1章 核心概念
+
+### 1.1 什么是类型化数据
+
+在 Dart 中，普通的 `List<int>` 存储的是 `int` 对象的引用，每个元素都是一个完整的 Dart 对象，包含对象头和类型信息。这种方式虽然灵活，但在处理大量数值数据时存在性能问题：
+
+1. **内存开销大**：每个元素需要额外的对象头（约 16 字节）
+2. **访问效率低**：需要解引用获取实际值
+3. **缓存不友好**：数据分散在堆中，不利于 CPU 缓存
+
+**类型化数据（Typed Data）** 解决了这些问题：
+
+```dart
+import 'dart:typed_data';
+
+void compareMemoryUsage() {
+  // 普通 List<int>：每个元素约 16-24 字节
+  final normalList = List<int>.generate(1000, (i) => i);
+
+  // Uint8List：每个元素 1 字节
+  final typedList = Uint8List(1000);
+  for (var i = 0; i < 1000; i++) {
+    typedList[i] = i;
+  }
+
+  // 内存占用对比：普通列表约 16-24KB，类型化列表约 1KB
+}
+```
+
+**Flutter 框架小知识**
+
+**为什么类型化数据更高效？**
+
+类型化数据在内存中是连续存储的，没有对象头开销，CPU 可以直接通过指针偏移访问任意元素。这种布局方式：
+
+- **减少内存占用**：每个元素只占用实际需要的字节数
+- **提高缓存命中率**：连续存储有利于 CPU 预取
+- **支持 SIMD 优化**：可以一次性处理多个数据
+
+### 1.2 库结构概览
+
+`dart:typed_data` 库包含以下核心类：
+
+```
+dart:typed_data
+│
+├── ByteBuffer          # 字节缓冲区（底层存储）
+├── ByteData            # 随机访问字节视图
+├── Endian              # 字节序枚举
+├── BytesBuilder        # 字节构建器
+│
+├── 整数类型列表
+│   ├── Int8List        # 8位有符号整数
+│   ├── Int16List       # 16位有符号整数
+│   ├── Int32List       # 32位有符号整数
+│   ├── Int64List       # 64位有符号整数
+│   ├── Uint8List       # 8位无符号整数
+│   ├── Uint8ClampedList # 8位无符号整数（钳制）
+│   ├── Uint16List      # 16位无符号整数
+│   ├── Uint32List      # 32位无符号整数
+│   └── Uint64List      # 64位无符号整数
+│
+├── 浮点数类型列表
+│   ├── Float32List     # 32位单精度浮点数
+│   └── Float64List     # 64位双精度浮点数
+│
+└── SIMD 类型（向量运算）
+    ├── Float32x4       # 4个32位浮点数
+    ├── Float32x4List   # Float32x4 列表
+    ├── Float64x2       # 2个64位浮点数
+    ├── Float64x2List   # Float64x2 列表
+    ├── Int32x4         # 4个32位整数
+    ├── Int32x4List     # Int32x4 列表
+    └── ...
+```
+
+### 1.3 字节序（Endian）
+
+字节序是指多字节数据在内存中的存储顺序。
+
+#### 1.3.1 大端序与小端序
+
+```dart
+import 'dart:typed_data';
+
+void endianExample() {
+  // 数值 0x12345678（十进制 305419896）
+  final value = 0x12345678;
+
+  final byteData = ByteData(4);
+
+  // 大端序存储：高位字节在前
+  byteData.setUint32(0, value, Endian.big);
+  print('大端序: ${byteData.buffer.asUint8List()}');
+  // 输出: [18, 52, 86, 120] (0x12, 0x34, 0x56, 0x78)
+
+  // 小端序存储：低位字节在前
+  byteData.setUint32(0, value, Endian.little);
+  print('小端序: ${byteData.buffer.asUint8List()}');
+  // 输出: [120, 86, 52, 18] (0x78, 0x56, 0x34, 0x12)
+}
+```
+
+**字节序对比：**
+
+| 字节序                  | 存储方式         | 使用场景                |
+| ----------------------- | ---------------- | ----------------------- |
+| 大端序（Big Endian）    | 高位字节在低地址 | 网络协议、Java、PowerPC |
+| 小端序（Little Endian） | 低位字节在低地址 | x86/x64 处理器、ARM     |
+| 主机序（Host Endian）   | 当前平台的字节序 | 本地数据处理            |
+
+**Dart Tips 语法小贴士**
+
+**如何检测当前平台的字节序？**
+
+```dart
+import 'dart:typed_data';
+
+Endian getHostEndian() {
+  final buffer = Uint16List.fromList([0x0102]).buffer;
+  final bytes = buffer.asUint8List();
+  return bytes[0] == 0x01 ? Endian.big : Endian.little;
+}
+
+void main() {
+  print('主机字节序: ${getHostEndian()}');
+  // x86/x64 通常输出: Endian.little
+}
+```
+
+### 1.4 视图（View）概念
+
+类型化数据的核心设计理念是**共享底层存储**。多个类型化列表可以共享同一个 `ByteBuffer`，但用不同的方式解释数据。
+
+```dart
+import 'dart:typed_data';
+
+void viewExample() {
+  // 创建底层缓冲区
+  final buffer = Uint8List(8).buffer;
+
+  // 创建不同视图
+  final bytes = buffer.asUint8List();      // 8个无符号字节
+  final shorts = buffer.asUint16List();    // 4个16位整数
+  final ints = buffer.asUint32List();      // 2个32位整数
+  final longs = buffer.asUint64List();     // 1个64位整数
+
+  // 通过一种视图写入
+  ints[0] = 0x12345678;
+
+  // 通过另一种视图读取
+  print('字节视图: $bytes');
+  // 小端序: [120, 86, 52, 18, 0, 0, 0, 0]
+
+  print('短整型视图: ${shorts.map((s) => '0x${s.toRadixString(16)}')}');
+  // 小端序: [0x5678, 0x1234, 0x0, 0x0]
+}
+```
+
+**视图关系图：**
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    ByteBuffer                        │
+│  [00] [01] [02] [03] [04] [05] [06] [07]            │
+│   │    │    │    │    │    │    │    │              │
+└───┼────┼────┼────┼────┼────┼────┼────┼──────────────┘
+    │    │    │    │    │    │    │    │
+    ▼    ▼    ▼    ▼    ▼    ▼    ▼    ▼
+┌─────────────────────────────────────────────────────┐
+│  Uint8List (8个元素)                                 │
+│  [00] [01] [02] [03] [04] [05] [06] [07]            │
+└─────────────────────────────────────────────────────┘
+
+    └──────┘    └──────┘    └──────┘    └──────┘
+       │           │           │           │
+       ▼           ▼           ▼           ▼
+┌─────────────────────────────────────────────────────┐
+│  Uint16List (4个元素)                                │
+│  [00-01]  [02-03]  [04-05]  [06-07]                 │
+└─────────────────────────────────────────────────────┘
+
+    └──────────────┘          └──────────────┘
+           │                         │
+           ▼                         ▼
+┌─────────────────────────────────────────────────────┐
+│  Uint32List (2个元素)                                │
+│  [00-01-02-03]        [04-05-06-07]                 │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 第2章 ByteBuffer 与 ByteData
+
+### 2.1 ByteBuffer 类
+
+`ByteBuffer` 是类型化数据的底层存储，表示一段连续的内存区域。
+
+#### 2.1.1 创建 ByteBuffer
+
+```dart
+import 'dart:typed_data';
+
+void createByteBuffer() {
+  // 方式1：通过 Uint8List 创建
+  final bytes = Uint8List(1024);
+  final buffer1 = bytes.buffer;
+
+  // 方式2：直接创建（通过 ByteData）
+  final byteData = ByteData(1024);
+  final buffer2 = byteData.buffer;
+
+  // 方式3：从现有数据创建
+  final buffer3 = Uint8List.fromList([1, 2, 3, 4]).buffer;
+}
+```
+
+#### 2.1.2 常用属性
+
+1）**lengthInBytes**
+
+获取缓冲区的字节长度。
+
+```dart
+import 'dart:typed_data';
+
+void bufferLengthExample() {
+  final buffer = Uint8List(1024).buffer;
+  print('缓冲区大小: ${buffer.lengthInBytes} 字节');  // 1024
+}
+```
+
+#### 2.1.3 创建视图的方法
+
+`ByteBuffer` 提供了创建各种类型视图的方法：
+
+```dart
+import 'dart:typed_data';
+
+void bufferViewMethods() {
+  final buffer = Uint8List(64).buffer;
+
+  // 创建 ByteData 视图
+  final byteData = buffer.asByteData();
+  final byteDataOffset = buffer.asByteData(8, 16);  // 从偏移8开始，长度16
+
+  // 创建整数列表视图
+  final int8List = buffer.asInt8List();
+  final int16List = buffer.asInt16List();
+  final int32List = buffer.asInt32List();
+  final int64List = buffer.asInt64List();
+
+  final uint8List = buffer.asUint8List();
+  final uint8ClampedList = buffer.asUint8ClampedList();
+  final uint16List = buffer.asUint16List();
+  final uint32List = buffer.asUint32List();
+  final uint64List = buffer.asUint64List();
+
+  // 创建浮点数列表视图
+  final float32List = buffer.asFloat32List();
+  final float64List = buffer.asFloat64List();
+
+  // 创建 SIMD 视图
+  final float32x4List = buffer.asFloat32x4List();
+  final float64x2List = buffer.asFloat64x2List();
+  final int32x4List = buffer.asInt32x4List();
+}
+```
+
+**ByteBuffer 视图方法汇总：**
+
+| 方法                                   | 返回类型         | 元素大小 | 说明              |
+| -------------------------------------- | ---------------- | -------- | ----------------- |
+| `asByteData([offset, length])`         | ByteData         | 1字节    | 随机访问字节视图  |
+| `asInt8List([offset, length])`         | Int8List         | 1字节    | 有符号8位整数     |
+| `asInt16List([offset, length])`        | Int16List        | 2字节    | 有符号16位整数    |
+| `asInt32List([offset, length])`        | Int32List        | 4字节    | 有符号32位整数    |
+| `asInt64List([offset, length])`        | Int64List        | 8字节    | 有符号64位整数    |
+| `asUint8List([offset, length])`        | Uint8List        | 1字节    | 无符号8位整数     |
+| `asUint8ClampedList([offset, length])` | Uint8ClampedList | 1字节    | 钳制无符号8位整数 |
+| `asUint16List([offset, length])`       | Uint16List       | 2字节    | 无符号16位整数    |
+| `asUint32List([offset, length])`       | Uint32List       | 4字节    | 无符号32位整数    |
+| `asUint64List([offset, length])`       | Uint64List       | 8字节    | 无符号64位整数    |
+| `asFloat32List([offset, length])`      | Float32List      | 4字节    | 单精度浮点数      |
+| `asFloat64List([offset, length])`      | Float64List      | 8字节    | 双精度浮点数      |
+| `asFloat32x4List([offset, length])`    | Float32x4List    | 16字节   | 4个单精度浮点数   |
+| `asFloat64x2List([offset, length])`    | Float64x2List    | 16字节   | 2个双精度浮点数   |
+| `asInt32x4List([offset, length])`      | Int32x4List      | 16字节   | 4个32位整数       |
+
+### 2.2 ByteData 类
+
+`ByteData` 提供了对字节缓冲区的随机访问能力，支持以不同的数据类型和字节序读写数据。
+
+#### 2.2.1 创建 ByteData
+
+```dart
+import 'dart:typed_data';
+
+void createByteData() {
+  // 方式1：直接创建指定大小的 ByteData
+  final data1 = ByteData(64);
+
+  // 方式2：从 ByteBuffer 创建视图
+  final buffer = Uint8List(128).buffer;
+  final data2 = ByteData.view(buffer);
+  final data3 = ByteData.view(buffer, 32, 64);  // 偏移32，长度64
+
+  // 方式3：从 TypedData 创建子视图
+  final uint8List = Uint8List(100);
+  final data4 = ByteData.sublistView(uint8List);
+  final data5 = ByteData.sublistView(uint8List, 10, 50);
+}
+```
+
+#### 2.2.2 读取数据的方法
+
+```dart
+import 'dart:typed_data';
+
+void readByteData() {
+  final data = ByteData(32);
+
+  // 写入测试数据
+  data.setUint8(0, 255);
+  data.setInt16(2, -1000);
+  data.setUint32(4, 123456789);
+  data.setFloat32(8, 3.14159);
+  data.setFloat64(16, 2.718281828);
+
+  // 读取数据
+  print('Uint8: ${data.getUint8(0)}');           // 255
+  print('Int16: ${data.getInt16(2)}');           // -1000
+  print('Uint32: ${data.getUint32(4)}');         // 123456789
+  print('Float32: ${data.getFloat32(8)}');       // 3.14159
+  print('Float64: ${data.getFloat64(16)}');      // 2.718281828
+}
+```
+
+**ByteData 读取方法汇总：**
+
+| 方法                               | 返回类型 | 字节数 | 说明           |
+| ---------------------------------- | -------- | ------ | -------------- |
+| `getInt8(byteOffset)`              | int      | 1      | 有符号8位整数  |
+| `getInt16(byteOffset, [endian])`   | int      | 2      | 有符号16位整数 |
+| `getInt32(byteOffset, [endian])`   | int      | 4      | 有符号32位整数 |
+| `getInt64(byteOffset, [endian])`   | int      | 8      | 有符号64位整数 |
+| `getUint8(byteOffset)`             | int      | 1      | 无符号8位整数  |
+| `getUint16(byteOffset, [endian])`  | int      | 2      | 无符号16位整数 |
+| `getUint32(byteOffset, [endian])`  | int      | 4      | 无符号32位整数 |
+| `getUint64(byteOffset, [endian])`  | int      | 8      | 无符号64位整数 |
+| `getFloat32(byteOffset, [endian])` | double   | 4      | 单精度浮点数   |
+| `getFloat64(byteOffset, [endian])` | double   | 8      | 双精度浮点数   |
+
+#### 2.2.3 写入数据的方法
+
+```dart
+import 'dart:typed_data';
+
+void writeByteData() {
+  final data = ByteData(32);
+
+  // 写入各种类型数据
+  data.setInt8(0, -128);
+  data.setUint8(1, 255);
+
+  data.setInt16(2, -32768, Endian.little);
+  data.setUint16(4, 65535, Endian.big);
+
+  data.setInt32(6, -2147483648);
+  data.setUint32(10, 4294967295);
+
+  data.setFloat32(14, 1.5);
+  data.setFloat64(18, 3.141592653589793);
+
+  print('写入完成，共 ${data.lengthInBytes} 字节');
+}
+```
+
+**ByteData 写入方法汇总：**
+
+| 方法                                      | 参数   | 字节数 | 说明               |
+| ----------------------------------------- | ------ | ------ | ------------------ |
+| `setInt8(byteOffset, value)`              | int    | 1      | 写入有符号8位整数  |
+| `setInt16(byteOffset, value, [endian])`   | int    | 2      | 写入有符号16位整数 |
+| `setInt32(byteOffset, value, [endian])`   | int    | 4      | 写入有符号32位整数 |
+| `setInt64(byteOffset, value, [endian])`   | int    | 8      | 写入有符号64位整数 |
+| `setUint8(byteOffset, value)`             | int    | 1      | 写入无符号8位整数  |
+| `setUint16(byteOffset, value, [endian])`  | int    | 2      | 写入无符号16位整数 |
+| `setUint32(byteOffset, value, [endian])`  | int    | 4      | 写入无符号32位整数 |
+| `setUint64(byteOffset, value, [endian])`  | int    | 8      | 写入无符号64位整数 |
+| `setFloat32(byteOffset, value, [endian])` | double | 4      | 写入单精度浮点数   |
+| `setFloat64(byteOffset, value, [endian])` | double | 8      | 写入双精度浮点数   |
+
+#### 2.2.4 常用属性
+
+```dart
+import 'dart:typed_data';
+
+void byteDataProperties() {
+  final data = ByteData(64);
+
+  // buffer - 获取底层 ByteBuffer
+  final buffer = data.buffer;
+  print('底层缓冲区: $buffer');
+
+  // lengthInBytes - 字节长度
+  print('字节长度: ${data.lengthInBytes}');  // 64
+
+  // offsetInBytes - 在缓冲区中的偏移
+  print('缓冲区偏移: ${data.offsetInBytes}');  // 0
+}
+```
+
+### 2.3 ByteData 实战应用
+
+#### 2.3.1 解析二进制文件格式
+
+```dart
+import 'dart:typed_data';
+
+class ZipFileHeader {
+  final int signature;
+  final int version;
+  final int flags;
+  final int compression;
+  final int modifiedTime;
+  final int modifiedDate;
+  final int crc32;
+  final int compressedSize;
+  final int uncompressedSize;
+  final int fileNameLength;
+  final int extraFieldLength;
+
+  ZipFileHeader({
+    required this.signature,
+    required this.version,
+    required this.flags,
+    required this.compression,
+    required this.modifiedTime,
+    required this.modifiedDate,
+    required this.crc32,
+    required this.compressedSize,
+    required this.uncompressedSize,
+    required this.fileNameLength,
+    required this.extraFieldLength,
+  });
+
+  factory ZipFileHeader.fromBytes(Uint8List bytes) {
+    final data = ByteData.sublistView(bytes);
+
+    return ZipFileHeader(
+      signature: data.getUint32(0, Endian.little),
+      version: data.getUint16(4, Endian.little),
+      flags: data.getUint16(6, Endian.little),
+      compression: data.getUint16(8, Endian.little),
+      modifiedTime: data.getUint16(10, Endian.little),
+      modifiedDate: data.getUint16(12, Endian.little),
+      crc32: data.getUint32(14, Endian.little),
+      compressedSize: data.getUint32(18, Endian.little),
+      uncompressedSize: data.getUint32(22, Endian.little),
+      fileNameLength: data.getUint16(26, Endian.little),
+      extraFieldLength: data.getUint16(28, Endian.little),
+    );
+  }
+}
+
+void parseZipFile(Uint8List fileData) {
+  final header = ZipFileHeader.fromBytes(fileData);
+
+  if (header.signature == 0x04034b50) {
+    print('有效的 ZIP 本地文件头');
+    print('版本: ${header.version}');
+    print('压缩方式: ${header.compression}');
+    print('压缩大小: ${header.compressedSize}');
+    print('未压缩大小: ${header.uncompressedSize}');
+  }
+}
+```
+
+#### 2.3.2 网络协议数据包
+
+```dart
+import 'dart:typed_data';
+
+class TcpHeader {
+  final int sourcePort;
+  final int destPort;
+  final int sequenceNumber;
+  final int acknowledgmentNumber;
+  final int dataOffset;
+  final int flags;
+  final int windowSize;
+  final int checksum;
+  final int urgentPointer;
+
+  TcpHeader({
+    required this.sourcePort,
+    required this.destPort,
+    required this.sequenceNumber,
+    required this.acknowledgmentNumber,
+    required this.dataOffset,
+    required this.flags,
+    required this.windowSize,
+    required this.checksum,
+    required this.urgentPointer,
+  });
+
+  Uint8List toBytes() {
+    final data = ByteData(20);
+
+    data.setUint16(0, sourcePort, Endian.big);
+    data.setUint16(2, destPort, Endian.big);
+    data.setUint32(4, sequenceNumber, Endian.big);
+    data.setUint32(8, acknowledgmentNumber, Endian.big);
+    data.setUint8(12, (dataOffset << 4) & 0xF0);
+    data.setUint8(13, flags);
+    data.setUint16(14, windowSize, Endian.big);
+    data.setUint16(16, checksum, Endian.big);
+    data.setUint16(18, urgentPointer, Endian.big);
+
+    return data.buffer.asUint8List();
+  }
+}
+```
+
+---
+
+## 第3章 整数类型列表
+
+### 3.1 Int8List 与 Uint8List
+
+8位整数列表是最基础的类型化列表，每个元素占用1字节。
+
+#### 3.1.1 创建与基本操作
+
+```dart
+import 'dart:typed_data';
+
+void int8ListExample() {
+  // 创建 Int8List
+  final int8List = Int8List(10);
+  int8List[0] = 127;   // 最大值
+  int8List[1] = -128;  // 最小值
+
+  // 创建 Uint8List
+  final uint8List = Uint8List(10);
+  uint8List[0] = 255;  // 最大值
+  uint8List[1] = 0;    // 最小值
+
+  // 从列表创建
+  final fromList = Uint8List.fromList([1, 2, 3, 4, 5]);
+
+  // 从字节缓冲区创建
+  final buffer = ByteData(20).buffer;
+  final fromBuffer = Uint8List.view(buffer, 5, 10);
+}
+```
+
+**数值范围：**
+
+| 类型      | 最小值 | 最大值 |
+| --------- | ------ | ------ |
+| Int8List  | -128   | 127    |
+| Uint8List | 0      | 255    |
+
+#### 3.1.2 Uint8ClampedList
+
+`Uint8ClampedList` 是一种特殊的 Uint8List，当赋的值超出范围时会被钳制（clamped）到边界值，而不是溢出。
+
+```dart
+import 'dart:typed_data';
+
+void clampedListExample() {
+  final clamped = Uint8ClampedList(5);
+
+  // 正常赋值
+  clamped[0] = 100;
+  print(clamped[0]);  // 100
+
+  // 超出最大值，被钳制到 255
+  clamped[1] = 300;
+  print(clamped[1]);  // 255
+
+  // 负数，被钳制到 0
+  clamped[2] = -50;
+  print(clamped[2]);  // 0
+
+  // 对比 Uint8List 的溢出行为
+  final normal = Uint8List(1);
+  normal[0] = 300;
+  print(normal[0]);  // 44 (300 % 256)
+}
+```
+
+**Flutter 框架小知识**
+
+**为什么需要 Uint8ClampedList？**
+
+在图像处理中，像素值的范围是 0-255。使用 `Uint8ClampedList` 可以确保像素值不会溢出，这在处理图像滤镜、混合颜色时非常有用。例如：
+
+```dart
+import 'dart:typed_data';
+
+// 图像亮度调整
+void adjustBrightness(Uint8ClampedList pixels, int delta) {
+  for (var i = 0; i < pixels.length; i++) {
+    pixels[i] = pixels[i] + delta;  // 自动钳制到 0-255
+  }
+}
+```
+
+### 3.2 16位整数列表
+
+#### 3.2.1 Int16List 与 Uint16List
+
+```dart
+import 'dart:typed_data';
+
+void int16ListExample() {
+  // Int16List：有符号16位整数
+  final int16List = Int16List(10);
+  int16List[0] = 32767;   // 最大值
+  int16List[1] = -32768;  // 最小值
+
+  // Uint16List：无符号16位整数
+  final uint16List = Uint16List(10);
+  uint16List[0] = 65535;  // 最大值
+  uint16List[1] = 0;      // 最小值
+
+  // 从列表创建
+  final fromList = Int16List.fromList([1000, -2000, 3000]);
+
+  // 字节序影响
+  final buffer = ByteData(4).buffer;
+  final bytes = buffer.asUint8List();
+  bytes[0] = 0x01;
+  bytes[1] = 0x02;
+  bytes[2] = 0x03;
+  bytes[3] = 0x04;
+
+  final littleEndian = buffer.asInt16List(0, 2);
+  print('小端序: $littleEndian');  // [513, 1027] (0x0201, 0x0403)
+}
+```
+
+**数值范围：**
+
+| 类型       | 最小值 | 最大值 |
+| ---------- | ------ | ------ |
+| Int16List  | -32768 | 32767  |
+| Uint16List | 0      | 65535  |
+
+### 3.3 32位整数列表
+
+#### 3.3.1 Int32List 与 Uint32List
+
+```dart
+import 'dart:typed_data';
+
+void int32ListExample() {
+  // Int32List：有符号32位整数
+  final int32List = Int32List(10);
+  int32List[0] = 2147483647;   // 最大值
+  int32List[1] = -2147483648;  // 最小值
+
+  // Uint32List：无符号32位整数
+  final uint32List = Uint32List(10);
+  uint32List[0] = 4294967295;  // 最大值
+
+  // 实际应用场景：RGBA 颜色值
+  final colors = Uint32List(3);
+  colors[0] = 0xFF0000FF;  // 红色 (ABGR)
+  colors[1] = 0xFF00FF00;  // 绿色
+  colors[2] = 0xFFFF0000;  // 蓝色
+}
+```
+
+**数值范围：**
+
+| 类型       | 最小值      | 最大值     |
+| ---------- | ----------- | ---------- |
+| Int32List  | -2147483648 | 2147483647 |
+| Uint32List | 0           | 4294967295 |
+
+### 3.4 64位整数列表
+
+#### 3.4.1 Int64List 与 Uint64List
+
+```dart
+import 'dart:typed_data';
+
+void int64ListExample() {
+  // Int64List：有符号64位整数
+  final int64List = Int64List(10);
+  int64List[0] = 9223372036854775807;   // 最大值
+  int64List[1] = -9223372036854775808;  // 最小值
+
+  // Uint64List：无符号64位整数
+  final uint64List = Uint64List(10);
+  uint64List[0] = 18446744073709551615;  // 最大值
+
+  // 实际应用场景：时间戳（微秒级）
+  final timestamps = Int64List(100);
+  for (var i = 0; i < timestamps.length; i++) {
+    timestamps[i] = DateTime.now().microsecondsSinceEpoch;
+  }
+}
+```
+
+**数值范围：**
+
+| 类型       | 最小值               | 最大值               |
+| ---------- | -------------------- | -------------------- |
+| Int64List  | -9223372036854775808 | 9223372036854775807  |
+| Uint64List | 0                    | 18446744073709551615 |
+
+### 3.5 整数列表的共同属性与方法
+
+所有整数列表都继承自 `TypedData` 和 `List<int>`，具有以下共同特性：
+
+```dart
+import 'dart:typed_data';
+
+void commonProperties() {
+  final list = Uint32List.fromList([10, 20, 30, 40, 50]);
+
+  // 继承自 List<int> 的属性
+  print('长度: ${list.length}');           // 5
+  print('是否为空: ${list.isEmpty}');       // false
+  print('第一个元素: ${list.first}');       // 10
+  print('最后一个元素: ${list.last}');      // 50
+
+  // 继承自 TypedData 的属性
+  print('元素大小: ${list.elementSizeInBytes}');  // 4
+  print('字节长度: ${list.lengthInBytes}');       // 20
+  print('缓冲区偏移: ${list.offsetInBytes}');     // 0
+
+  // 获取底层缓冲区
+  final buffer = list.buffer;
+
+  // 创建子视图
+  final subView = Uint32List.view(list.buffer, 8, 2);
+  print('子视图: $subView');  // [30, 40]
+}
+```
+
+**Dart Tips 语法小贴士**
+
+**如何高效复制类型化列表？**
+
+```dart
+import 'dart:typed_data';
+
+void efficientCopy() {
+  final original = Uint8List.fromList([1, 2, 3, 4, 5]);
+
+  // 方式1：使用构造函数（深拷贝）
+  final copy1 = Uint8List.fromList(original);
+
+  // 方式2：使用 sublist（深拷贝）
+  final copy2 = original.sublist(0);
+
+  // 方式3：使用视图（共享底层数据，不是拷贝）
+  final view = Uint8List.view(original.buffer);
+
+  // 验证拷贝
+  copy1[0] = 100;
+  print('原始: $original');  // [1, 2, 3, 4, 5]
+  print('拷贝: $copy1');     // [100, 2, 3, 4, 5]
+}
+```
+
+---
+
+## 第4章 浮点数类型列表
+
+### 4.1 Float32List
+
+`Float32List` 存储 IEEE 754 单精度浮点数，每个元素占用 4 字节。
+
+#### 4.1.1 创建与基本操作
+
+```dart
+import 'dart:typed_data';
+
+void float32ListExample() {
+  // 创建 Float32List
+  final float32List = Float32List(10);
+  float32List[0] = 3.14159;
+  float32List[1] = 2.71828;
+
+  // 从列表创建
+  final fromList = Float32List.fromList([1.5, 2.5, 3.5, 4.5]);
+
+  // 批量赋值
+  for (var i = 0; i < float32List.length; i++) {
+    float32List[i] = i * 0.5;
+  }
+
+  print('Float32List: $float32List');
+}
+```
+
+#### 4.1.2 精度说明
+
+```dart
+import 'dart:typed_data';
+
+void precisionExample() {
+  final list = Float32List(3);
+
+  // 单精度浮点数约 7 位有效数字
+  list[0] = 1.23456789;
+  print(list[0]);  // 1.2345678806304932（精度损失）
+
+  // 对比双精度
+  final doubleList = Float64List(1);
+  doubleList[0] = 1.23456789;
+  print(doubleList[0]);  // 1.23456789（精确）
+}
+```
+
+**Float32 数值范围：**
+
+| 属性     | 值              |
+| -------- | --------------- |
+| 最小正值 | 1.17549435e-38  |
+| 最大正值 | 3.40282347e+38  |
+| 精度     | 约 7 位有效数字 |
+
+### 4.2 Float64List
+
+`Float64List` 存储 IEEE 754 双精度浮点数，每个元素占用 8 字节，精度更高。
+
+#### 4.2.1 创建与基本操作
+
+```dart
+import 'dart:typed_data';
+
+void float64ListExample() {
+  // 创建 Float64List
+  final float64List = Float64List(10);
+  float64List[0] = 3.141592653589793;
+  float64List[1] = 2.718281828459045;
+
+  // 从列表创建
+  final fromList = Float64List.fromList([1.1, 2.2, 3.3, 4.4]);
+
+  // 科学计算示例：计算正弦值表
+  final sineTable = Float64List(360);
+  for (var i = 0; i < 360; i++) {
+    sineTable[i] = sin(i * pi / 180);
+  }
+}
+```
+
+**Float64 数值范围：**
+
+| 属性     | 值                      |
+| -------- | ----------------------- |
+| 最小正值 | 2.2250738585072014e-308 |
+| 最大正值 | 1.7976931348623157e+308 |
+| 精度     | 约 15-17 位有效数字     |
+
+### 4.3 浮点数列表实战应用
+
+#### 4.3.1 音频数据处理
+
+```dart
+import 'dart:typed_data';
+import 'dart:math';
+
+class AudioProcessor {
+  // 生成正弦波
+  Float32List generateSineWave(
+    double frequency,
+    double duration,
+    int sampleRate,
+  ) {
+    final numSamples = (duration * sampleRate).toInt();
+    final samples = Float32List(numSamples);
+
+    for (var i = 0; i < numSamples; i++) {
+      final time = i / sampleRate;
+      samples[i] = sin(2 * pi * frequency * time);
+    }
+
+    return samples;
+  }
+
+  // 应用音量增益
+  void applyGain(Float32List samples, double gain) {
+    for (var i = 0; i < samples.length; i++) {
+      samples[i] = (samples[i] * gain).clamp(-1.0, 1.0);
+    }
+  }
+
+  // 计算 RMS（均方根）音量
+  double calculateRMS(Float32List samples) {
+    var sum = 0.0;
+    for (var i = 0; i < samples.length; i++) {
+      sum += samples[i] * samples[i];
+    }
+    return sqrt(sum / samples.length);
+  }
+}
+```
+
+#### 4.3.2 矩阵运算
+
+```dart
+import 'dart:typed_data';
+
+class Matrix {
+  final int rows;
+  final int cols;
+  final Float64List data;
+
+  Matrix(this.rows, this.cols)
+    : data = Float64List(rows * cols);
+
+  double get(int row, int col) => data[row * cols + col];
+  void set(int row, int col, double value) {
+    data[row * cols + col] = value;
+  }
+
+  // 矩阵乘法
+  Matrix multiply(Matrix other) {
+    if (cols != other.rows) {
+      throw ArgumentError('矩阵维度不匹配');
+    }
+
+    final result = Matrix(rows, other.cols);
+
+    for (var i = 0; i < rows; i++) {
+      for (var j = 0; j < other.cols; j++) {
+        var sum = 0.0;
+        for (var k = 0; k < cols; k++) {
+          sum += get(i, k) * other.get(k, j);
+        }
+        result.set(i, j, sum);
+      }
+    }
+
+    return result;
+  }
+}
+```
+
+---
+
+## 第5章 SIMD 类型与高级应用
+
+### 5.1 SIMD 简介
+
+SIMD（Single Instruction, Multiple Data，单指令多数据）是一种并行计算技术，可以同时对多个数据执行相同的操作。Dart 的 `dart:typed_data` 库提供了 SIMD 类型，用于加速数值计算。
+
+**Flutter 框架小知识**
+
+**SIMD 的优势是什么？**
+
+SIMD 指令可以在一个 CPU 周期内处理多个数据，显著提高计算密集型任务的性能：
+
+- **图像处理**：同时处理多个像素的 RGBA 值
+- **音频处理**：同时处理多个音频样本
+- **3D 图形**：同时变换多个顶点
+- **机器学习**：同时计算多个神经元的输出
+
+### 5.2 Float32x4
+
+`Float32x4` 表示 4 个 32 位浮点数，适用于处理 RGBA 颜色值或 3D 向量（带齐次坐标）。
+
+#### 5.2.1 创建 Float32x4
+
+```dart
+import 'dart:typed_data';
+
+void float32x4Example() {
+  // 方式1：使用构造函数
+  final vec1 = Float32x4(1.0, 2.0, 3.0, 4.0);
+
+  // 方式2：使用 splat（所有分量相同）
+  final vec2 = Float32x4.splat(5.0);  // (5.0, 5.0, 5.0, 5.0)
+
+  // 方式3：使用 zero
+  final vec3 = Float32x4.zero();  // (0.0, 0.0, 0.0, 0.0)
+
+  // 方式4：从列表创建
+  final vec4 = Float32x4.fromList([1.0, 2.0, 3.0, 4.0]);
+}
+```
+
+#### 5.2.2 访问分量
+
+```dart
+import 'dart:typed_data';
+
+void accessComponents() {
+  final vec = Float32x4(1.0, 2.0, 3.0, 4.0);
+
+  // 访问单个分量
+  print('x: ${vec.x}');  // 1.0
+  print('y: ${vec.y}');  // 2.0
+  print('z: ${vec.z}');  // 3.0
+  print('w: ${vec.w}');  // 4.0
+
+  // 访问 signMask
+  print('signMask: ${vec.signMask}');  // 符号位掩码
+
+  // 转换为列表
+  final list = vec.toList();
+  print('列表: $list');  // [1.0, 2.0, 3.0, 4.0]
+}
+```
+
+#### 5.2.3 算术运算
+
+```dart
+import 'dart:typed_data';
+
+void arithmeticOperations() {
+  final a = Float32x4(1.0, 2.0, 3.0, 4.0);
+  final b = Float32x4(5.0, 6.0, 7.0, 8.0);
+
+  // 加法
+  final sum = a + b;
+  print('a + b: ${sum.toList()}');  // [6.0, 8.0, 10.0, 12.0]
+
+  // 减法
+  final diff = a - b;
+  print('a - b: ${diff.toList()}');  // [-4.0, -4.0, -4.0, -4.0]
+
+  // 乘法
+  final prod = a * b;
+  print('a * b: ${prod.toList()}');  // [5.0, 12.0, 21.0, 32.0]
+
+  // 除法
+  final quot = b / a;
+  print('b / a: ${quot.toList()}');  // [5.0, 3.0, 2.333..., 2.0]
+
+  // 平方根
+  final sqrt = a.sqrt();
+  print('sqrt(a): ${sqrt.toList()}');  // [1.0, 1.414..., 1.732..., 2.0]
+
+  // 倒数平方根
+  final rsqrt = a.reciprocalSqrt();
+  print('rsqrt(a): ${rsqrt.toList()}');  // [1.0, 0.707..., 0.577..., 0.5]
+
+  // 倒数
+  final recip = a.reciprocal();
+  print('recip(a): ${recip.toList()}');  // [1.0, 0.5, 0.333..., 0.25]
+}
+```
+
+#### 5.2.4 比较运算
+
+```dart
+import 'dart:typed_data';
+
+void comparisonOperations() {
+  final a = Float32x4(1.0, 5.0, 3.0, 8.0);
+  final b = Float32x4(2.0, 4.0, 3.0, 7.0);
+
+  // 小于
+  final lessThan = a.lessThan(b);
+  print('a < b: ${lessThan.toList()}');  // [-1.0, 0.0, 0.0, 0.0]
+
+  // 小于等于
+  final lessThanOrEqual = a.lessThanOrEqual(b);
+  print('a <= b: ${lessThanOrEqual.toList()}');  // [-1.0, 0.0, -1.0, 0.0]
+
+  // 等于
+  final equal = a.equal(b);
+  print('a == b: ${equal.toList()}');  // [0.0, 0.0, -1.0, 0.0]
+
+  // 大于
+  final greaterThan = a.greaterThan(b);
+  print('a > b: ${greaterThan.toList()}');  // [0.0, -1.0, 0.0, -1.0]
+
+  // 大于等于
+  final greaterThanOrEqual = a.greaterThanOrEqual(b);
+  print('a >= b: ${greaterThanOrEqual.toList()}');  // [0.0, -1.0, -1.0, -1.0]
+
+  // 不等于
+  final notEqual = a.notEqual(b);
+  print('a != b: ${notEqual.toList()}');  // [-1.0, -1.0, 0.0, -1.0]
+}
+```
+
+**注意**：比较运算返回的 `Float32x4` 中，真值用 `-1.0`（所有位为1）表示，假值用 `0.0` 表示。
+
+#### 5.2.5 混合与选择
+
+```dart
+import 'dart:typed_data';
+
+void shuffleAndSelect() {
+  final a = Float32x4(1.0, 2.0, 3.0, 4.0);
+  final b = Float32x4(5.0, 6.0, 7.0, 8.0);
+
+  // 混合（根据 mask 选择 a 或 b 的分量）
+  // mask 为 true 选择 b，为 false 选择 a
+  final mask = Float32x4(0.0, -1.0, 0.0, -1.0);
+  final mixed = a.mix(b, mask);
+  print('mix(a, b, mask): ${mixed.toList()}');  // [1.0, 6.0, 3.0, 8.0]
+
+  // 重新排列分量
+  final shuffled = a.shuffle(Float32x4.zwxy);
+  print('shuffle(a, zwxy): ${shuffled.toList()}');  // [3.0, 4.0, 1.0, 2.0]
+
+  // 取绝对值
+  final abs = Float32x4(-1.0, -2.0, 3.0, -4.0).abs();
+  print('abs: ${abs.toList()}');  // [1.0, 2.0, 3.0, 4.0]
+
+  // 取反
+  final neg = a.negate();
+  print('negate(a): ${neg.toList()}');  // [-1.0, -2.0, -3.0, -4.0]
+
+  // 取最小值
+  final min = a.min(b);
+  print('min(a, b): ${min.toList()}');  // [1.0, 4.0, 3.0, 7.0]
+
+  // 取最大值
+  final max = a.max(b);
+  print('max(a, b): ${max.toList()}');  // [5.0, 6.0, 7.0, 8.0]
+
+  // 限制范围
+  final clamped = a.clamp(
+    Float32x4.splat(2.0),
+    Float32x4.splat(3.5),
+  );
+  print('clamp(a, 2.0, 3.5): ${clamped.toList()}');  // [2.0, 2.0, 3.0, 3.5]
+}
+```
+
+**Shuffle 常量：**
+
+| 常量             | 说明               |
+| ---------------- | ------------------ |
+| `Float32x4.xxxx` | 复制 x 到所有分量  |
+| `Float32x4.yyyy` | 复制 y 到所有分量  |
+| `Float32x4.zzzz` | 复制 z 到所有分量  |
+| `Float32x4.wwww` | 复制 w 到所有分量  |
+| `Float32x4.xyxy` | 重复 xy 模式       |
+| `Float32x4.zwzw` | 重复 zw 模式       |
+| `Float32x4.xyzw` | 原始顺序（无变化） |
+| `Float32x4.yzwx` | 循环左移           |
+| `Float32x4.zwxy` | 交换前后两个分量   |
+
+### 5.3 Float32x4List
+
+`Float32x4List` 是 `Float32x4` 的列表，用于存储大量 SIMD 数据。
+
+```dart
+import 'dart:typed_data';
+
+void float32x4ListExample() {
+  // 创建 Float32x4List
+  final list = Float32x4List(100);
+
+  // 赋值
+  list[0] = Float32x4(1.0, 2.0, 3.0, 4.0);
+  list[1] = Float32x4(5.0, 6.0, 7.0, 8.0);
+
+  // 批量处理（SIMD 加速）
+  for (var i = 0; i < list.length; i++) {
+    list[i] = list[i] * Float32x4.splat(2.0);  // 所有分量乘以 2
+  }
+
+  // 图像处理示例：调整 RGBA 像素的亮度
+  final pixels = Float32x4List(1000);
+  const brightness = Float32x4(1.2, 1.2, 1.2, 1.0);  // RGB 增亮，Alpha 不变
+
+  for (var i = 0; i < pixels.length; i++) {
+    pixels[i] = pixels[i] * brightness;
+  }
+}
+```
+
+### 5.4 Int32x4
+
+`Int32x4` 表示 4 个 32 位整数，主要用于掩码操作和位运算。
+
+```dart
+import 'dart:typed_data';
+
+void int32x4Example() {
+  // 创建 Int32x4
+  final a = Int32x4(1, 2, 3, 4);
+  final b = Int32x4(5, 6, 7, 8);
+
+  // 算术运算
+  final sum = a + b;
+  print('a + b: ${sum.toList()}');  // [6, 8, 10, 12]
+
+  // 位运算
+  final and = a & b;
+  print('a & b: ${and.toList()}');  // [1, 2, 3, 0]
+
+  final or = a | b;
+  print('a | b: ${or.toList()}');  // [5, 6, 7, 12]
+
+  final xor = a ^ b;
+  print('a ^ b: ${xor.toList()}');  // [4, 4, 4, 12]
+
+  // 移位运算
+  final shifted = a << 1;
+  print('a << 1: ${shifted.toList()}');  // [2, 4, 6, 8]
+
+  // 选择（根据 mask 选择 a 或 b）
+  final mask = Int32x4.bool(true, false, true, false);
+  final selected = mask.select(a, b);
+  print('select: ${selected.toList()}');  // [1, 6, 3, 8]
+
+  // 转换为 Float32x4
+  final floatVec = a.toFloat32x4();
+  print('toFloat32x4: ${floatVec.toList()}');  // [1.0, 2.0, 3.0, 4.0]
+}
+```
+
+### 5.5 其他 SIMD 类型
+
+#### 5.5.1 Float64x2
+
+```dart
+import 'dart:typed_data';
+
+void float64x2Example() {
+  // Float64x2：2个双精度浮点数
+  final vec = Float64x2(1.5, 2.5);
+
+  // 访问分量
+  print('x: ${vec.x}');  // 1.5
+  print('y: ${vec.y}');  // 2.5
+
+  // 算术运算
+  final other = Float64x2(3.0, 4.0);
+  final sum = vec + other;
+  print('sum: ${sum.toList()}');  // [4.5, 6.5]
+
+  // 平方和
+  final sumOfSquares = vec.x * vec.x + vec.y * vec.y;
+  print('平方和: $sumOfSquares');  // 8.5
+}
+```
+
+#### 5.5.2 SIMD 类型对比
+
+| 类型      | 元素个数 | 每个元素位数 | 总位数 | 适用场景         |
+| --------- | -------- | ------------ | ------ | ---------------- |
+| Float32x4 | 4        | 32           | 128    | RGBA颜色、3D向量 |
+| Float64x2 | 2        | 64           | 128    | 高精度2D坐标     |
+| Int32x4   | 4        | 32           | 128    | 掩码、整数运算   |
+
+### 5.6 实战应用：图像处理
+
+```dart
+import 'dart:typed_data';
+
+class ImageProcessor {
+  // 调整亮度（SIMD 加速）
+  void adjustBrightness(
+    Float32x4List pixels,
+    double brightness,
+  ) {
+    final factor = Float32x4(brightness, brightness, brightness, 1.0);
+
+    for (var i = 0; i < pixels.length; i++) {
+      pixels[i] = (pixels[i] * factor).clamp(
+        Float32x4.zero(),
+        Float32x4.splat(255.0),
+      );
+    }
+  }
+
+  // 灰度转换（SIMD 加速）
+  void convertToGrayscale(Float32x4List pixels) {
+    // 灰度系数：R * 0.299 + G * 0.587 + B * 0.114
+    final rWeight = Float32x4.splat(0.299);
+    final gWeight = Float32x4.splat(0.587);
+    final bWeight = Float32x4.splat(0.114);
+
+    for (var i = 0; i < pixels.length; i++) {
+      final pixel = pixels[i];
+
+      // 提取 RGB 分量
+      final r = pixel.shuffle(Float32x4.xxxx);
+      final g = pixel.shuffle(Float32x4.yyyy);
+      final b = pixel.shuffle(Float32x4.zzzz);
+
+      // 计算灰度值
+      final gray = r * rWeight + g * gWeight + b * bWeight;
+
+      // 构建新的 RGBA 像素（灰度值应用到 RGB，Alpha 不变）
+      final alpha = pixel.shuffle(Float32x4.wwww);
+      pixels[i] = gray.shuffle(Float32x4.xxxx) + alpha;
+    }
+  }
+
+  // 混合两张图片（SIMD 加速）
+  void blendImages(
+    Float32x4List dest,
+    Float32x4List src,
+    double alpha,
+  ) {
+    final alphaVec = Float32x4.splat(alpha);
+    final oneMinusAlpha = Float32x4.splat(1.0 - alpha);
+
+    for (var i = 0; i < dest.length; i++) {
+      dest[i] = dest[i] * oneMinusAlpha + src[i] * alphaVec;
+    }
+  }
+}
+```
+
+---
+
+## 第6章 实用工具类
+
+### 6.1 BytesBuilder
+
+`BytesBuilder` 用于动态构建字节列表，支持高效地追加数据。
+
+#### 6.1.1 基本用法
+
+```dart
+import 'dart:typed_data';
+
+void bytesBuilderExample() {
+  final builder = BytesBuilder();
+
+  // 追加字节
+  builder.addByte(0x01);
+  builder.addByte(0x02);
+
+  // 追加字节列表
+  builder.add([0x03, 0x04, 0x05]);
+
+  // 追加 Uint8List
+  builder.add(Uint8List.fromList([0x06, 0x07, 0x08]));
+
+  // 获取结果
+  final result = builder.toBytes();
+  print('结果: $result');  // [1, 2, 3, 4, 5, 6, 7, 8]
+
+  // 获取结果并清空 builder
+  final result2 = builder.takeBytes();
+  print('builder 长度: ${builder.length}');  // 0
+}
+```
+
+#### 6.1.2 复制模式
+
+```dart
+import 'dart:typed_data';
+
+void copyModeExample() {
+  // copy: true（默认）- 复制输入数据
+  final builder1 = BytesBuilder(copy: true);
+  final data = [1, 2, 3];
+  builder1.add(data);
+  data[0] = 100;  // 修改原始数据
+  print('copy=true: ${builder1.toBytes()}');  // [1, 2, 3]（不受影响）
+
+  // copy: false - 不复制输入数据（更快，但需谨慎）
+  final builder2 = BytesBuilder(copy: false);
+  final data2 = Uint8List.fromList([1, 2, 3]);
+  builder2.add(data2);
+  // 注意：如果 data2 被修改，builder2 的内容也会改变
+}
+```
+
+#### 6.1.3 实战应用：数据包构建
+
+```dart
+import 'dart:typed_data';
+
+class PacketBuilder {
+  final BytesBuilder _builder = BytesBuilder();
+
+  // 写入 8 位整数
+  void writeUint8(int value) {
+    _builder.addByte(value & 0xFF);
+  }
+
+  // 写入 16 位整数（大端序）
+  void writeUint16BE(int value) {
+    _builder.addByte((value >> 8) & 0xFF);
+    _builder.addByte(value & 0xFF);
+  }
+
+  // 写入 16 位整数（小端序）
+  void writeUint16LE(int value) {
+    _builder.addByte(value & 0xFF);
+    _builder.addByte((value >> 8) & 0xFF);
+  }
+
+  // 写入 32 位整数（大端序）
+  void writeUint32BE(int value) {
+    _builder.addByte((value >> 24) & 0xFF);
+    _builder.addByte((value >> 16) & 0xFF);
+    _builder.addByte((value >> 8) & 0xFF);
+    _builder.addByte(value & 0xFF);
+  }
+
+  // 写入字节列表
+  void writeBytes(List<int> bytes) {
+    _builder.add(bytes);
+  }
+
+  // 写入长度前缀的字符串（UTF-8）
+  void writeString(String str) {
+    final bytes = utf8.encode(str);
+    writeUint16BE(bytes.length);
+    _builder.add(bytes);
+  }
+
+  Uint8List build() => _builder.toBytes();
+
+  void clear() => _builder.clear();
+}
+```
+
+### 6.2 不可变视图
+
+`dart:typed_data` 提供了不可变视图类，用于保护数据不被修改。
+
+```dart
+import 'dart:typed_data';
+
+void unmodifiableViews() {
+  final original = Uint8List.fromList([1, 2, 3, 4, 5]);
+
+  // 创建不可变视图
+  final unmodifiable = UnmodifiableUint8ListView(original);
+
+  // 可以读取
+  print(unmodifiable[0]);  // 1
+
+  // 尝试修改会抛出异常
+  // unmodifiable[0] = 100;  // UnsupportedError
+
+  // 其他不可变视图
+  final unmodifiableByteData = UnmodifiableByteDataView(
+    ByteData.sublistView(original),
+  );
+
+  final unmodifiableByteBuffer = UnmodifiableByteBufferView(original.buffer);
+}
+```
+
+**不可变视图类：**
+
+| 类名                            | 说明                        |
+| ------------------------------- | --------------------------- |
+| `UnmodifiableByteBufferView`    | 不可变的 ByteBuffer 视图    |
+| `UnmodifiableByteDataView`      | 不可变的 ByteData 视图      |
+| `UnmodifiableUint8ListView`     | 不可变的 Uint8List 视图     |
+| `UnmodifiableInt8ListView`      | 不可变的 Int8List 视图      |
+| `UnmodifiableFloat32ListView`   | 不可变的 Float32List 视图   |
+| `UnmodifiableFloat64ListView`   | 不可变的 Float64List 视图   |
+| `UnmodifiableFloat32x4ListView` | 不可变的 Float32x4List 视图 |
+| `UnmodifiableFloat64x2ListView` | 不可变的 Float64x2List 视图 |
+
+---
+
+## 附录：完整示例代码
+
+### 示例1：二进制协议解析器
+
+```dart
+import 'dart:typed_data';
+
+class BinaryProtocol {
+  final ByteData _data;
+  int _offset = 0;
+
+  BinaryProtocol(Uint8List bytes) : _data = ByteData.sublistView(bytes);
+
+  int readUint8() => _data.getUint8(_offset++);
+
+  int readUint16({Endian endian = Endian.big}) {
+    final value = _data.getUint16(_offset, endian);
+    _offset += 2;
+    return value;
+  }
+
+  int readUint32({Endian endian = Endian.big}) {
+    final value = _data.getUint32(_offset, endian);
+    _offset += 4;
+    return value;
+  }
+
+  double readFloat32({Endian endian = Endian.big}) {
+    final value = _data.getFloat32(_offset, endian);
+    _offset += 4;
+    return value;
+  }
+
+  double readFloat64({Endian endian = Endian.big}) {
+    final value = _data.getFloat64(_offset, endian);
+    _offset += 8;
+    return value;
+  }
+
+  Uint8List readBytes(int length) {
+    final bytes = Uint8List.view(
+      _data.buffer,
+      _data.offsetInBytes + _offset,
+      length,
+    );
+    _offset += length;
+    return bytes;
+  }
+
+  String readString(int length) {
+    final bytes = readBytes(length);
+    return utf8.decode(bytes);
+  }
+
+  int get remaining => _data.lengthInBytes - _offset;
+
+  bool get isEOF => _offset >= _data.lengthInBytes;
+}
+```
+
+### 示例2：环形缓冲区
+
+```dart
+import 'dart:typed_data';
+
+class CircularBuffer {
+  final Uint8List _buffer;
+  int _readIndex = 0;
+  int _writeIndex = 0;
+  int _size = 0;
+
+  CircularBuffer(int capacity) : _buffer = Uint8List(capacity);
+
+  int get capacity => _buffer.length;
+  int get size => _size;
+  bool get isEmpty => _size == 0;
+  bool get isFull => _size == capacity;
+
+  bool write(int byte) {
+    if (isFull) return false;
+
+    _buffer[_writeIndex] = byte;
+    _writeIndex = (_writeIndex + 1) % capacity;
+    _size++;
+    return true;
+  }
+
+  int? read() {
+    if (isEmpty) return null;
+
+    final byte = _buffer[_readIndex];
+    _readIndex = (_readIndex + 1) % capacity;
+    _size--;
+    return byte;
+  }
+
+  int writeMany(List<int> bytes) {
+    var written = 0;
+    for (final byte in bytes) {
+      if (!write(byte)) break;
+      written++;
+    }
+    return written;
+  }
+
+  Uint8List readMany(int count) {
+    final result = BytesBuilder();
+    for (var i = 0; i < count; i++) {
+      final byte = read();
+      if (byte == null) break;
+      result.addByte(byte);
+    }
+    return result.toBytes();
+  }
+
+  void clear() {
+    _readIndex = 0;
+    _writeIndex = 0;
+    _size = 0;
+  }
+}
+```
+
+### 示例3：内存池
+
+```dart
+import 'dart:typed_data';
+
+class BytePool {
+  final List<Uint8List> _available = [];
+  final int _bufferSize;
+  final int _maxPoolSize;
+
+  BytePool({
+    int bufferSize = 1024,
+    int maxPoolSize = 100,
+  })  : _bufferSize = bufferSize,
+        _maxPoolSize = maxPoolSize;
+
+  Uint8List acquire() {
+    if (_available.isNotEmpty) {
+      return _available.removeLast();
+    }
+    return Uint8List(_bufferSize);
+  }
+
+  void release(Uint8List buffer) {
+    if (buffer.length == _bufferSize && _available.length < _maxPoolSize) {
+      buffer.fillRange(0, buffer.length, 0);  // 清零
+      _available.add(buffer);
+    }
+  }
+
+  int get availableCount => _available.length;
+
+  void clear() {
+    _available.clear();
+  }
+}
+```
+
+---
+
+## 结语
+
+`dart:typed_data` 是 Dart 处理二进制数据的核心库，通过本书的学习，你应该已经掌握了：
+
+1. **核心概念**：类型化数据的优势、字节序、视图机制
+2. **ByteBuffer 与 ByteData**：底层存储和随机访问
+3. **整数类型列表**：各种位宽的整数列表及其应用场景
+4. **浮点数类型列表**：单精度和双精度浮点数列表
+5. **SIMD 类型**：向量运算和并行计算
+6. **实用工具**：BytesBuilder、不可变视图等
+
+在实际开发中，建议：
+
+- 处理二进制数据时优先使用类型化列表
+- 注意字节序问题，特别是在网络通信中
+- 利用 SIMD 类型加速数值计算
+- 使用 BytesBuilder 高效构建字节数据
+- 合理使用不可变视图保护数据
+
+希望本书能帮助你更好地使用 `dart:typed_data` 构建高性能的 Dart/Flutter 应用！

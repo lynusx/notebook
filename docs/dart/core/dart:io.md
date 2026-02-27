@@ -1,0 +1,1770 @@
+# dart:io 详解与实战
+
+## 内容简介
+
+`dart:io` 是 Dart 核心库之一，提供了文件系统、网络通信、进程管理和标准输入输出等 I/O 功能。它是构建命令行应用、服务器端应用和 Flutter 桌面/移动应用的基础库。需要注意的是，`dart:io` 不支持浏览器环境，仅适用于原生平台（Dart VM）。
+
+全书共分为6章：
+
+- **第1章 核心概念**：详细介绍 dart:io 的适用范围、异步 I/O 模型
+- **第2章 文件系统操作**：深入讲解 File、Directory、Link 的使用
+- **第3章 网络通信**：全面介绍 Socket、HttpClient、WebSocket
+- **第4章 进程管理**：介绍 Process 类的使用、标准输入输出
+- **第5章 高级 I/O 操作**：详细介绍 RandomAccessFile、IOSink、文件锁
+- **第6章 实战应用**：提供文件下载服务器、日志系统等实际案例
+
+---
+
+## 第1章 核心概念
+
+### 1.1 什么是 dart:io
+
+`dart:io` 是 Dart 提供的原生平台 I/O 库，支持以下功能：
+
+1. **文件系统操作**：创建、读取、写入、删除文件和目录
+2. **网络通信**：TCP/UDP Socket、HTTP 客户端/服务器、WebSocket
+3. **进程管理**：启动外部程序、与进程交互
+4. **标准 I/O**：stdin、stdout、stderr
+
+**Flutter 框架小知识**
+
+**dart:io 的平台限制**
+
+`dart:io` 只能在以下环境中使用：
+
+- ✅ Dart 命令行脚本
+- ✅ Dart 服务器应用
+- ✅ Flutter 移动应用（iOS/Android）
+- ✅ Flutter 桌面应用（Windows/macOS/Linux）
+
+❌ **不能在浏览器中使用** - 浏览器环境需要使用 `dart:html` 或 `package:http`
+
+### 1.2 异步 I/O 模型
+
+`dart:io` 中的大多数 I/O 操作都是异步的，返回 `Future` 或 `Stream`：
+
+```dart
+import 'dart:io';
+
+void main() async {
+  // 异步读取文件
+  final file = File('data.txt');
+  final content = await file.readAsString();
+  print(content);
+
+  // 异步写入文件
+  await file.writeAsString('Hello, World!');
+}
+```
+
+**同步 vs 异步方法：**
+
+| 异步方法          | 同步方法              | 说明                 |
+| ----------------- | --------------------- | -------------------- |
+| `readAsString()`  | `readAsStringSync()`  | 读取文件内容为字符串 |
+| `writeAsString()` | `writeAsStringSync()` | 写入字符串到文件     |
+| `exists()`        | `existsSync()`        | 检查文件是否存在     |
+| `create()`        | `createSync()`        | 创建文件             |
+
+**Dart Tips 语法小贴士**
+
+**何时使用同步方法？**
+
+同步方法会阻塞当前 Isolate，直到操作完成。一般只在以下情况使用：
+
+1. **命令行脚本**：一次性任务，不需要响应 UI
+2. **初始化阶段**：应用启动时加载配置
+3. **测试代码**：简化测试逻辑
+
+```dart
+import 'dart:io';
+
+void main() {
+  // 命令行脚本中可以使用同步方法
+  final config = File('config.json').readAsStringSync();
+  print('配置加载完成');
+}
+```
+
+### 1.3 库结构概览
+
+```
+dart:io
+│
+├── 文件系统
+│   ├── FileSystemEntity (基类)
+│   ├── File              # 文件操作
+│   ├── Directory         # 目录操作
+│   ├── Link              # 符号链接
+│   ├── FileStat          # 文件状态信息
+│   └── FileSystemEntityType  # 实体类型枚举
+│
+├── 网络通信
+│   ├── Socket            # TCP Socket
+│   ├── ServerSocket      # TCP 服务器
+│   ├── RawSocket         # 原始 TCP Socket
+│   ├── RawDatagramSocket # UDP Socket
+│   ├── InternetAddress   # 网络地址
+│   ├── NetworkInterface  # 网络接口
+│   │
+│   ├── HttpClient        # HTTP 客户端
+│   ├── HttpClientRequest # HTTP 请求
+│   ├── HttpClientResponse # HTTP 响应
+│   ├── HttpServer        # HTTP 服务器
+│   ├── HttpRequest       # HTTP 服务器请求
+│   ├── HttpResponse      # HTTP 服务器响应
+│   ├── HttpHeaders       # HTTP 头
+│   ├── ContentType       # MIME 类型
+│   └── Cookie            # Cookie
+│   │
+│   └── WebSocket         # WebSocket
+│   └── WebSocketTransformer
+│
+├── 进程管理
+│   ├── Process           # 进程
+│   ├── ProcessResult     # 进程执行结果
+│   ├── ProcessSignal     # 进程信号
+│   └── ProcessStartMode  # 进程启动模式
+│
+├── 标准 I/O
+│   ├── stdin             # 标准输入 (Stdin)
+│   ├── stdout            # 标准输出 (Stdout)
+│   └── stderr            # 标准错误 (Stderr)
+│
+├── 其他
+│   ├── Platform          # 平台信息
+│   ├── IOSink            # 输出接口
+│   ├── RandomAccessFile  # 随机访问文件
+│   ├── FileLock          # 文件锁
+│   ├── FileMode          # 文件打开模式
+│   ├── BytesBuilder      # 字节构建器
+│   ├── GZipCodec         # GZip 编解码
+│   ├── ZLibCodec         # ZLib 编解码
+│   └── Pipe              # 匿名管道
+```
+
+---
+
+## 第2章 文件系统操作
+
+### 2.1 File 类
+
+`File` 类用于操作文件系统中的文件。
+
+#### 2.1.1 创建 File 对象
+
+```dart
+import 'dart:io';
+
+void createFileExamples() {
+  // 方式1：相对路径
+  final file1 = File('data.txt');
+
+  // 方式2：绝对路径
+  final file2 = File('/home/user/documents/report.pdf');
+
+  // 方式3：使用 Platform 获取路径
+  final file3 = File('${Platform.environment['HOME']}/config.ini');
+
+  // 方式4：从 URI
+  final file4 = File.fromUri(Uri.parse('file:///home/user/file.txt'));
+}
+```
+
+#### 2.1.2 常用属性
+
+1）**path**
+
+获取文件的完整路径。
+
+```dart
+import 'dart:io';
+
+void pathExample() {
+  final file = File('data.txt');
+  print('路径: ${file.path}');  // data.txt
+
+  // 获取父目录
+  print('父目录: ${file.parent.path}');
+
+  // 获取文件名
+  print('文件名: ${file.uri.pathSegments.last}');
+}
+```
+
+2）**parent**
+
+获取文件的父目录。
+
+```dart
+import 'dart:io';
+
+void parentExample() {
+  final file = File('/home/user/documents/file.txt');
+  final parent = file.parent;  // Directory: '/home/user/documents'
+
+  // 获取祖父目录
+  final grandparent = file.parent.parent;  // Directory: '/home/user'
+}
+```
+
+3）**uri**
+
+获取文件的 URI 表示。
+
+```dart
+import 'dart:io';
+
+void uriExample() {
+  final file = File('/home/user/file.txt');
+  print('URI: ${file.uri}');  // file:///home/user/file.txt
+}
+```
+
+#### 2.1.3 文件存在性检查
+
+```dart
+import 'dart:io';
+
+void existsExample() async {
+  final file = File('data.txt');
+
+  // 异步检查
+  if (await file.exists()) {
+    print('文件存在');
+  } else {
+    print('文件不存在');
+  }
+
+  // 同步检查
+  if (file.existsSync()) {
+    print('文件存在');
+  }
+}
+```
+
+#### 2.1.4 创建文件
+
+```dart
+import 'dart:io';
+
+void createFileExample() async {
+  // 方式1：创建空文件
+  final file1 = await File('new_file.txt').create();
+
+  // 方式2：递归创建（包括父目录）
+  final file2 = await File('dir/subdir/file.txt').create(recursive: true);
+
+  // 方式3：排他创建（文件已存在时抛出异常）
+  try {
+    final file3 = await File('existing.txt').create(exclusive: true);
+  } on FileSystemException catch (e) {
+    print('文件已存在: ${e.message}');
+  }
+}
+```
+
+#### 2.1.5 读取文件
+
+```dart
+import 'dart:io';
+
+void readFileExample() async {
+  final file = File('data.txt');
+
+  // 方式1：读取为字符串
+  final stringContent = await file.readAsString();
+  print(stringContent);
+
+  // 方式2：读取为字符串（指定编码）
+  final utf8Content = await file.readAsString(encoding: utf8);
+
+  // 方式3：读取为字节列表
+  final bytes = await file.readAsBytes();
+  print('文件大小: ${bytes.length} 字节');
+
+  // 方式4：读取为行列表
+  final lines = await file.readAsLines();
+  for (var line in lines) {
+    print(line);
+  }
+
+  // 方式5：使用 Stream 读取（适合大文件）
+  await for (var chunk in file.openRead()) {
+    print('读取 ${chunk.length} 字节');
+  }
+}
+```
+
+#### 2.1.6 写入文件
+
+```dart
+import 'dart:io';
+
+void writeFileExample() async {
+  final file = File('output.txt');
+
+  // 方式1：写入字符串（覆盖原有内容）
+  await file.writeAsString('Hello, World!');
+
+  // 方式2：追加模式写入
+  await file.writeAsString('\nNew line', mode: FileMode.append);
+
+  // 方式3：写入字节
+  await file.writeAsBytes([0x48, 0x65, 0x6C, 0x6C, 0x6F]);
+
+  // 方式4：使用 IOSink 写入
+  final sink = file.openWrite();
+  sink.writeln('Line 1');
+  sink.writeln('Line 2');
+  await sink.close();
+}
+```
+
+**FileMode 枚举：**
+
+| 模式                       | 说明             |
+| -------------------------- | ---------------- |
+| `FileMode.read`            | 只读模式         |
+| `FileMode.write`           | 写入模式（覆盖） |
+| `FileMode.append`          | 追加模式         |
+| `FileMode.writeOnly`       | 只写模式         |
+| `FileMode.writeOnlyAppend` | 只追加模式       |
+
+#### 2.1.7 删除文件
+
+```dart
+import 'dart:io';
+
+void deleteFileExample() async {
+  final file = File('temp.txt');
+
+  // 异步删除
+  await file.delete();
+
+  // 如果不存在则不抛出异常
+  await file.delete(recursive: false);
+
+  // 同步删除
+  file.deleteSync();
+}
+```
+
+#### 2.1.8 复制和重命名
+
+```dart
+import 'dart:io';
+
+void copyRenameExample() async {
+  final file = File('original.txt');
+
+  // 复制文件
+  final copy = await file.copy('backup.txt');
+
+  // 重命名文件
+  final renamed = await file.rename('new_name.txt');
+}
+```
+
+#### 2.1.9 获取文件信息
+
+```dart
+import 'dart:io';
+
+void fileInfoExample() async {
+  final file = File('document.pdf');
+
+  // 文件大小
+  final length = await file.length();
+  print('大小: $length 字节');
+
+  // 最后修改时间
+  final lastModified = await file.lastModified();
+  print('最后修改: $lastModified');
+
+  // 最后访问时间
+  final lastAccessed = await file.lastAccessed();
+  print('最后访问: $lastAccessed');
+
+  // 完整状态信息
+  final stat = await file.stat();
+  print('类型: ${stat.type}');
+  print('大小: ${stat.size}');
+  print('修改时间: ${stat.modified}');
+  print('访问时间: ${stat.accessed}');
+  print('模式: ${stat.mode}');
+}
+```
+
+### 2.2 Directory 类
+
+`Directory` 类用于操作文件系统中的目录。
+
+#### 2.2.1 创建 Directory 对象
+
+```dart
+import 'dart:io';
+
+void createDirectoryExamples() {
+  // 相对路径
+  final dir1 = Directory('my_folder');
+
+  // 绝对路径
+  final dir2 = Directory('/home/user/documents');
+
+  // 系统临时目录
+  final tempDir = Directory.systemTemp;
+
+  // 当前工作目录
+  final current = Directory.current;
+}
+```
+
+#### 2.2.2 创建目录
+
+```dart
+import 'dart:io';
+
+void createDirExample() async {
+  // 创建单级目录
+  final dir1 = await Directory('new_dir').create();
+
+  // 递归创建多级目录
+  final dir2 = await Directory('a/b/c/d').create(recursive: true);
+}
+```
+
+#### 2.2.3 列出目录内容
+
+```dart
+import 'dart:io';
+
+void listDirectoryExample() async {
+  final dir = Directory('.');
+
+  // 方式1：使用 list() 方法（Stream）
+  await for (var entity in dir.list()) {
+    print('${entity.path} - ${entity.runtimeType}');
+  }
+
+  // 方式2：递归列出
+  await for (var entity in dir.list(recursive: true)) {
+    print(entity.path);
+  }
+
+  // 方式3：不跟随符号链接
+  await for (var entity in dir.list(followLinks: false)) {
+    print(entity.path);
+  }
+
+  // 方式4：使用 listSync()（同步）
+  final entities = dir.listSync();
+  for (var entity in entities) {
+    print(entity.path);
+  }
+}
+```
+
+#### 2.2.4 特殊目录
+
+```dart
+import 'dart:io';
+
+void specialDirectoriesExample() {
+  // 系统临时目录
+  final tempDir = Directory.systemTemp;
+  print('临时目录: ${tempDir.path}');
+
+  // 当前工作目录
+  final current = Directory.current;
+  print('当前目录: ${current.path}');
+
+  // 修改当前目录
+  Directory.current = Directory('/tmp');
+  print('新当前目录: ${Directory.current.path}');
+}
+```
+
+### 2.3 Link 类
+
+`Link` 类用于操作符号链接（软链接）。
+
+```dart
+import 'dart:io';
+
+void linkExample() async {
+  // 创建符号链接
+  final link = Link('link_to_file');
+  await link.create('target_file.txt');
+
+  // 获取链接目标
+  final target = await link.target();
+  print('链接目标: $target');
+
+  // 更新链接目标
+  await link.update('new_target.txt');
+
+  // 删除链接
+  await link.delete();
+}
+```
+
+### 2.4 文件系统事件监听
+
+```dart
+import 'dart:io';
+
+void watchFileSystem() async {
+  final dir = Directory('.');
+
+  // 监听目录变化
+  await for (var event in dir.watch()) {
+    print('事件类型: ${event.type}');
+    print('路径: ${event.path}');
+
+    switch (event.type) {
+      case FileSystemEvent.create:
+        print('创建');
+        break;
+      case FileSystemEvent.modify:
+        print('修改');
+        break;
+      case FileSystemEvent.delete:
+        print('删除');
+        break;
+      case FileSystemEvent.move:
+        print('移动');
+        break;
+    }
+  }
+}
+```
+
+**FileSystemEvent 类型：**
+
+| 类型                     | 说明                   |
+| ------------------------ | ---------------------- |
+| `FileSystemEvent.create` | 文件/目录被创建        |
+| `FileSystemEvent.modify` | 文件被修改             |
+| `FileSystemEvent.delete` | 文件/目录被删除        |
+| `FileSystemEvent.move`   | 文件/目录被移动/重命名 |
+
+---
+
+## 第3章 网络通信
+
+### 3.1 Socket 类
+
+`Socket` 提供了 TCP 客户端功能。
+
+#### 3.1.1 创建 TCP 客户端
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void tcpClientExample() async {
+  // 连接到服务器
+  final socket = await Socket.connect('example.com', 80);
+
+  print('已连接到: ${socket.remoteAddress.address}:${socket.remotePort}');
+
+  // 发送 HTTP 请求
+  socket.writeln('GET / HTTP/1.1');
+  socket.writeln('Host: example.com');
+  socket.writeln('Connection: close');
+  socket.writeln();
+
+  // 接收响应
+  await for (var data in socket) {
+    print(utf8.decode(data));
+  }
+
+  // 关闭连接
+  await socket.close();
+}
+```
+
+#### 3.1.2 Socket 属性
+
+```dart
+import 'dart:io';
+
+void socketPropertiesExample(Socket socket) {
+  // 远程地址
+  print('远程地址: ${socket.remoteAddress}');
+  print('远程端口: ${socket.remotePort}');
+
+  // 本地地址
+  print('本地地址: ${socket.address}');
+  print('本地端口: ${socket.port}');
+
+  // 获取底层操作系统句柄
+  print('句柄: ${socket.nativeHandle}');
+}
+```
+
+### 3.2 ServerSocket 类
+
+`ServerSocket` 用于创建 TCP 服务器。
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void tcpServerExample() async {
+  // 创建服务器，监听所有接口的 8080 端口
+  final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8080);
+
+  print('服务器运行在: ${server.address.address}:${server.port}');
+
+  // 接受连接
+  await for (var socket in server) {
+    handleConnection(socket);
+  }
+}
+
+void handleConnection(Socket socket) {
+  print('新连接: ${socket.remoteAddress.address}:${socket.remotePort}');
+
+  // 接收数据
+  socket.listen(
+    (data) {
+      final message = utf8.decode(data);
+      print('收到: $message');
+
+      // 发送响应
+      socket.writeln('Echo: $message');
+    },
+    onDone: () {
+      print('连接关闭');
+    },
+    onError: (error) {
+      print('错误: $error');
+    },
+  );
+}
+```
+
+### 3.3 HttpClient 类
+
+`HttpClient` 提供了低级别的 HTTP 客户端功能。
+
+#### 3.3.1 基本 GET 请求
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void httpGetExample() async {
+  final client = HttpClient();
+
+  try {
+    // 创建请求
+    final request = await client.get('example.com', 80, '/');
+
+    // 添加请求头
+    request.headers.add('User-Agent', 'Dart/3.0');
+
+    // 发送请求并获取响应
+    final response = await request.close();
+
+    // 读取响应体
+    final body = await response.transform(utf8.decoder).join();
+    print('状态码: ${response.statusCode}');
+    print('响应体: $body');
+  } finally {
+    client.close();
+  }
+}
+```
+
+#### 3.3.2 POST 请求
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void httpPostExample() async {
+  final client = HttpClient();
+
+  try {
+    final request = await client.post('api.example.com', 80, '/users');
+
+    // 设置内容类型
+    request.headers.contentType = ContentType.json;
+
+    // 写入请求体
+    request.write(jsonEncode({
+      'name': 'John Doe',
+      'email': 'john@example.com',
+    }));
+
+    final response = await request.close();
+
+    print('状态码: ${response.statusCode}');
+
+    final body = await response.transform(utf8.decoder).join();
+    print('响应: $body');
+  } finally {
+    client.close();
+  }
+}
+```
+
+#### 3.3.3 下载文件
+
+```dart
+import 'dart:io';
+
+void downloadFileExample() async {
+  final client = HttpClient();
+
+  try {
+    final request = await client.getUrl(
+      Uri.parse('https://example.com/file.zip'),
+    );
+
+    final response = await request.close();
+
+    if (response.statusCode == 200) {
+      final file = File('file.zip');
+      final sink = file.openWrite();
+
+      // 将响应流写入文件
+      await response.pipe(sink);
+
+      print('下载完成');
+    }
+  } finally {
+    client.close();
+  }
+}
+```
+
+#### 3.3.4 处理重定向
+
+```dart
+import 'dart:io';
+
+void handleRedirectExample() async {
+  final client = HttpClient();
+
+  // 自动跟随重定向（默认）
+  client.autoUncompress = true;
+
+  // 手动处理重定向
+  client.autoUncompress = false;
+
+  try {
+    final request = await client.getUrl(
+      Uri.parse('https://httpbin.org/redirect/3'),
+    );
+
+    // 禁止自动重定向
+    request.followRedirects = false;
+
+    final response = await request.close();
+
+    if (response.isRedirect) {
+      final location = response.headers.value('location');
+      print('重定向到: $location');
+    }
+  } finally {
+    client.close();
+  }
+}
+```
+
+### 3.4 HttpServer 类
+
+`HttpServer` 用于创建 HTTP 服务器。
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void httpServerExample() async {
+  // 创建服务器
+  final server = await HttpServer.bind(InternetAddress.anyIPv4, 8080);
+
+  print('HTTP 服务器运行在 http://localhost:${server.port}');
+
+  // 处理请求
+  await for (var request in server) {
+    handleRequest(request);
+  }
+}
+
+void handleRequest(HttpRequest request) {
+  final response = request.response;
+
+  // 设置响应头
+  response.headers.contentType = ContentType.json;
+
+  // 处理不同路径
+  switch (request.uri.path) {
+    case '/':
+      response.write(jsonEncode({'message': 'Hello, World!'}));
+      break;
+    case '/users':
+      response.write(jsonEncode([
+        {'id': 1, 'name': 'Alice'},
+        {'id': 2, 'name': 'Bob'},
+      ]));
+      break;
+    default:
+      response.statusCode = HttpStatus.notFound;
+      response.write(jsonEncode({'error': 'Not found'}));
+  }
+
+  response.close();
+}
+```
+
+### 3.5 WebSocket
+
+`WebSocket` 提供了全双工通信能力。
+
+#### 3.5.1 WebSocket 客户端
+
+```dart
+import 'dart:io';
+
+void websocketClientExample() async {
+  // 连接 WebSocket 服务器
+  final ws = await WebSocket.connect('wss://echo.websocket.org');
+
+  print('已连接');
+
+  // 监听消息
+  ws.listen(
+    (message) {
+      print('收到: $message');
+    },
+    onDone: () {
+      print('连接关闭');
+    },
+    onError: (error) {
+      print('错误: $error');
+    },
+  );
+
+  // 发送消息
+  ws.add('Hello, WebSocket!');
+
+  // 发送二进制数据
+  ws.add([1, 2, 3, 4]);
+
+  // 关闭连接
+  await Future.delayed(Duration(seconds: 5));
+  await ws.close();
+}
+```
+
+#### 3.5.2 WebSocket 服务器
+
+```dart
+import 'dart:io';
+
+void websocketServerExample() async {
+  final server = await HttpServer.bind(InternetAddress.anyIPv4, 8080);
+
+  print('WebSocket 服务器运行在 ws://localhost:${server.port}');
+
+  await for (var request in server) {
+    if (request.uri.path == '/ws') {
+      // 升级 HTTP 连接到 WebSocket
+      final socket = await WebSocketTransformer.upgrade(request);
+      handleWebSocket(socket);
+    } else {
+      request.response
+        ..statusCode = HttpStatus.notFound
+        ..write('Not found')
+        ..close();
+    }
+  }
+}
+
+void handleWebSocket(WebSocket socket) {
+  print('新 WebSocket 连接');
+
+  socket.listen(
+    (message) {
+      print('收到: $message');
+
+      // 广播给所有客户端
+      socket.add('Echo: $message');
+    },
+    onDone: () {
+      print('连接关闭');
+    },
+  );
+}
+```
+
+### 3.6 InternetAddress 类
+
+`InternetAddress` 表示网络地址。
+
+```dart
+import 'dart:io';
+
+void internetAddressExample() async {
+  // 从字符串创建
+  final addr1 = InternetAddress('192.168.1.1');
+  final addr2 = InternetAddress('::1');  // IPv6 本地地址
+
+  // DNS 查询
+  final addresses = await InternetAddress.lookup('google.com');
+  for (var addr in addresses) {
+    print('${addr.address} (${addr.type})');
+  }
+
+  // 特殊地址
+  final anyIPv4 = InternetAddress.anyIPv4;    // 0.0.0.0
+  final anyIPv6 = InternetAddress.anyIPv6;    // ::
+  final loopbackIPv4 = InternetAddress.loopbackIPv4;  // 127.0.0.1
+  final loopbackIPv6 = InternetAddress.loopbackIPv6;  // ::1
+}
+```
+
+---
+
+## 第4章 进程管理
+
+### 4.1 Process 类
+
+`Process` 类用于启动和管理外部程序。
+
+#### 4.1.1 Process.run
+
+`Process.run` 用于执行命令并等待完成，适合简单的命令执行。
+
+```dart
+import 'dart:io';
+
+void processRunExample() async {
+  // 执行命令
+  final result = await Process.run('ls', ['-l', '-a']);
+
+  print('退出码: ${result.exitCode}');
+  print('标准输出:\n${result.stdout}');
+  print('标准错误:\n${result.stderr}');
+}
+```
+
+**Process.run 参数：**
+
+| 参数                       | 类型                   | 说明                   |
+| -------------------------- | ---------------------- | ---------------------- |
+| `executable`               | `String`               | 要执行的程序           |
+| `arguments`                | `List<String>`         | 命令行参数             |
+| `workingDirectory`         | `String?`              | 工作目录               |
+| `environment`              | `Map<String, String>?` | 环境变量               |
+| `includeParentEnvironment` | `bool`                 | 是否继承父进程环境变量 |
+| `runInShell`               | `bool`                 | 是否在 shell 中运行    |
+| `stdoutEncoding`           | `Encoding?`            | 标准输出编码           |
+| `stderrEncoding`           | `Encoding?`            | 标准错误编码           |
+
+#### 4.1.2 Process.start
+
+`Process.start` 用于启动进程并进行交互式通信。
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+void processStartExample() async {
+  // 启动进程
+  final process = await Process.start('cat', []);
+
+  print('进程 ID: ${process.pid}');
+
+  // 向进程写入数据
+  process.stdin.writeln('Hello, Process!');
+  process.stdin.writeln('Second line');
+  await process.stdin.close();
+
+  // 读取标准输出
+  final stdoutLines = process.stdout
+      .transform(utf8.decoder)
+      .transform(LineSplitter());
+
+  await for (var line in stdoutLines) {
+    print('输出: $line');
+  }
+
+  // 读取标准错误
+  final stderr = await process.stderr.transform(utf8.decoder).join();
+  if (stderr.isNotEmpty) {
+    print('错误: $stderr');
+  }
+
+  // 等待进程结束
+  final exitCode = await process.exitCode;
+  print('退出码: $exitCode');
+}
+```
+
+#### 4.1.3 进程信号
+
+```dart
+import 'dart:io';
+
+void processSignalExample() async {
+  final process = await Process.start('sleep', ['10']);
+
+  // 3 秒后发送终止信号
+  await Future.delayed(Duration(seconds: 3));
+
+  // 发送 SIGTERM 信号（默认）
+  process.kill();
+
+  // 发送特定信号
+  process.kill(ProcessSignal.sigkill);  // 强制终止
+  process.kill(ProcessSignal.sigterm);  // 请求终止
+  process.kill(ProcessSignal.sigint);   // 中断信号
+}
+```
+
+**ProcessSignal 枚举：**
+
+| 信号                    | 说明              |
+| ----------------------- | ----------------- |
+| `ProcessSignal.sighup`  | 挂起信号          |
+| `ProcessSignal.sigint`  | 中断信号 (Ctrl+C) |
+| `ProcessSignal.sigquit` | 退出信号          |
+| `ProcessSignal.sigill`  | 非法指令          |
+| `ProcessSignal.sigtrap` | 跟踪/断点陷阱     |
+| `ProcessSignal.sigabrt` | 异常终止          |
+| `ProcessSignal.sigbus`  | 总线错误          |
+| `ProcessSignal.sigfpe`  | 浮点异常          |
+| `ProcessSignal.sigkill` | 强制终止          |
+| `ProcessSignal.sigusr1` | 用户定义信号1     |
+| `ProcessSignal.sigsegv` | 段错误            |
+| `ProcessSignal.sigusr2` | 用户定义信号2     |
+| `ProcessSignal.sigpipe` | 管道断开          |
+| `ProcessSignal.sigalrm` | 定时器信号        |
+| `ProcessSignal.sigterm` | 终止信号          |
+| `ProcessSignal.sigchld` | 子进程状态改变    |
+
+### 4.2 标准输入输出
+
+`dart:io` 提供了全局的 `stdin`、`stdout` 和 `stderr` 对象。
+
+#### 4.2.1 标准输入
+
+```dart
+import 'dart:io';
+
+void stdinExample() async {
+  // 读取一行输入
+  stdout.write('请输入你的名字: ');
+  final name = stdin.readLineSync();
+  print('你好, $name!');
+
+  // 读取密码（不显示）
+  stdout.write('请输入密码: ');
+  stdin.echoMode = false;
+  final password = stdin.readLineSync();
+  stdin.echoMode = true;
+  print('\n密码长度: ${password?.length}');
+
+  // 逐行读取
+  print('输入多行文本（输入空行结束）:');
+  await for (var line in stdin.transform(SystemEncoding().decoder).transform(LineSplitter())) {
+    if (line.isEmpty) break;
+    print('收到: $line');
+  }
+}
+```
+
+#### 4.2.2 标准输出
+
+```dart
+import 'dart:io';
+
+void stdoutExample() {
+  // 基本输出
+  stdout.writeln('Hello, World!');
+
+  // 不换行输出
+  stdout.write('Loading');
+  for (var i = 0; i < 3; i++) {
+    stdout.write('.');
+    sleep(Duration(milliseconds: 500));
+  }
+  stdout.writeln(' Done!');
+
+  // 检查是否支持终端颜色
+  if (stdout.supportsAnsiEscapes) {
+    stdout.writeln('\x1B[32m绿色文本\x1B[0m');
+    stdout.writeln('\x1B[31m红色文本\x1B[0m');
+  }
+
+  // 刷新输出
+  stdout.flush();
+}
+```
+
+#### 4.2.3 标准错误
+
+```dart
+import 'dart:io';
+
+void stderrExample() {
+  // 输出错误信息
+  stderr.writeln('错误: 文件未找到');
+
+  // 错误信息通常重定向到日志
+  stderr.write('警告: 内存使用过高');
+}
+```
+
+**Flutter 框架小知识**
+
+**stdout 和 stderr 的区别**
+
+- `stdout` 用于正常程序输出，可以被重定向到文件或管道
+- `stderr` 用于错误和诊断信息，通常显示在终端，便于调试
+
+```bash
+# 只重定向 stdout 到文件
+dart app.dart > output.txt
+
+# 只重定向 stderr 到文件
+dart app.dart 2> errors.txt
+
+# 分别重定向
+dart app.dart > output.txt 2> errors.txt
+
+# 合并重定向
+dart app.dart > all.txt 2>&1
+```
+
+---
+
+## 第5章 高级 I/O 操作
+
+### 5.1 RandomAccessFile 类
+
+`RandomAccessFile` 提供了文件的随机访问能力，支持在任意位置读写。
+
+#### 5.1.1 打开文件
+
+```dart
+import 'dart:io';
+
+void openRandomAccessFileExample() async {
+  // 只读模式打开
+  final file = await File('data.bin').open(mode: FileMode.read);
+
+  // 读写模式打开
+  final file2 = await File('data.bin').open(mode: FileMode.readWrite);
+
+  // 同步打开
+  final file3 = File('data.bin').openSync(mode: FileMode.append);
+}
+```
+
+#### 5.1.2 读写操作
+
+```dart
+import 'dart:io';
+
+void randomAccessExample() async {
+  final file = await File('data.bin').open(mode: FileMode.readWrite);
+
+  try {
+    // 获取文件长度
+    final length = await file.length();
+    print('文件长度: $length');
+
+    // 获取当前位置
+    var position = await file.position();
+    print('当前位置: $position');
+
+    // 写入数据
+    await file.writeByte(0x42);
+    await file.writeFrom([0x01, 0x02, 0x03, 0x04]);
+    await file.writeString('Hello');
+
+    // 移动到指定位置
+    await file.setPosition(0);
+
+    // 读取数据
+    final byte = await file.readByte();
+    print('读取字节: $byte');
+
+    final bytes = await file.read(10);
+    print('读取 ${bytes.length} 字节');
+
+    // 截断文件
+    await file.truncate(100);
+
+    // 刷新到磁盘
+    await file.flush();
+  } finally {
+    await file.close();
+  }
+}
+```
+
+#### 5.1.3 文件锁
+
+```dart
+import 'dart:io';
+
+void fileLockExample() async {
+  final file = await File('data.txt').open(mode: FileMode.readWrite);
+
+  try {
+    // 获取独占锁（写锁）
+    await file.lock(FileLock.exclusive);
+
+    // 执行写操作
+    await file.writeString('独占写入');
+
+    // 释放锁
+    await file.unlock();
+
+    // 获取共享锁（读锁）
+    await file.lock(FileLock.shared);
+
+    // 执行读操作
+    final data = await file.read(100);
+
+    await file.unlock();
+  } finally {
+    await file.close();
+  }
+}
+```
+
+**FileLock 类型：**
+
+| 类型                         | 说明                             |
+| ---------------------------- | -------------------------------- |
+| `FileLock.exclusive`         | 独占锁，阻止其他进程读写         |
+| `FileLock.shared`            | 共享锁，阻止其他进程写，但允许读 |
+| `FileLock.blockingExclusive` | 阻塞式独占锁                     |
+| `FileLock.blockingShared`    | 阻塞式共享锁                     |
+
+### 5.2 IOSink 类
+
+`IOSink` 是字节和文本输出的组合接口，用于流式写入数据。
+
+```dart
+import 'dart:io';
+
+void iosinkExample() async {
+  final file = File('output.txt');
+  final sink = file.openWrite();
+
+  try {
+    // 写入字符串
+    sink.write('Hello');
+    sink.writeln(' World!');
+
+    // 写入多行
+    sink.writeAll(['Line 1', 'Line 2', 'Line 3'], '\n');
+
+    // 写入字节
+    sink.add([0x48, 0x65, 0x6C, 0x6C, 0x6F]);
+
+    // 写入编码后的字符串
+    sink.writeCharCode(65);  // 'A'
+
+    // 刷新缓冲区
+    await sink.flush();
+  } finally {
+    await sink.close();
+  }
+}
+```
+
+### 5.3 压缩与解压缩
+
+```dart
+import 'dart:io';
+
+void compressionExample() async {
+  // 读取文件
+  final file = File('large_file.txt');
+  final bytes = await file.readAsBytes();
+
+  // GZip 压缩
+  final compressed = gzip.encode(bytes);
+  print('原始大小: ${bytes.length}');
+  print('压缩后: ${compressed.length}');
+
+  // 保存压缩文件
+  await File('large_file.txt.gz').writeAsBytes(compressed);
+
+  // GZip 解压
+  final decompressed = gzip.decode(compressed);
+  print('解压后: ${decompressed.length}');
+
+  // ZLib 压缩
+  final zlibCompressed = zlib.encode(bytes);
+
+  // ZLib 解压
+  final zlibDecompressed = zlib.decode(zlibCompressed);
+}
+```
+
+### 5.4 Platform 类
+
+`Platform` 提供了当前运行环境的信息。
+
+```dart
+import 'dart:io';
+
+void platformExample() {
+  // 操作系统
+  print('操作系统: ${Platform.operatingSystem}');  // windows, macos, linux, android, ios
+  print('操作系统版本: ${Platform.operatingSystemVersion}');
+
+  // 当前脚本
+  print('脚本路径: ${Platform.script}');
+
+  // 处理器架构
+  print('处理器数量: ${Platform.numberOfProcessors}');
+  print('本地架构: ${Platform.version}');
+
+  // 路径分隔符
+  print('路径分隔符: ${Platform.pathSeparator}');  // / 或 \
+
+  // 换行符
+  print('换行符: ${Platform.lineTerminator}');  // \n 或 \r\n
+
+  // 环境变量
+  print('PATH: ${Platform.environment['PATH']}');
+  print('HOME: ${Platform.environment['HOME']}');
+
+  // 可执行文件
+  print('Dart 可执行文件: ${Platform.resolvedExecutable}');
+
+  // 本地环境标识
+  print('本地环境: ${Platform.localeName}');  // zh_CN, en_US 等
+}
+```
+
+---
+
+## 第6章 实战应用
+
+### 6.1 文件下载器
+
+```dart
+import 'dart:io';
+
+class FileDownloader {
+  final HttpClient _client = HttpClient();
+
+  Future<void> download(
+    String url,
+    String savePath, {
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final request = await _client.getUrl(Uri.parse(url));
+    final response = await request.close();
+
+    if (response.statusCode != 200) {
+      throw HttpException('下载失败: ${response.statusCode}');
+    }
+
+    final total = response.headers.contentLength;
+    var received = 0;
+
+    final file = File(savePath);
+    final sink = file.openWrite();
+
+    try {
+      await for (var chunk in response) {
+        sink.add(chunk);
+        received += chunk.length;
+
+        if (onProgress != null && total > 0) {
+          onProgress(received, total);
+        }
+      }
+    } finally {
+      await sink.close();
+    }
+  }
+
+  void close() {
+    _client.close();
+  }
+}
+
+void main() async {
+  final downloader = FileDownloader();
+
+  try {
+    await downloader.download(
+      'https://example.com/file.zip',
+      'file.zip',
+      onProgress: (received, total) {
+        final progress = (received / total * 100).toStringAsFixed(1);
+        print('下载进度: $progress%');
+      },
+    );
+    print('下载完成');
+  } finally {
+    downloader.close();
+  }
+}
+```
+
+### 6.2 简单的 HTTP 文件服务器
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+import 'package:path/path.dart' as path;
+
+class FileServer {
+  late HttpServer _server;
+  final String rootPath;
+
+  FileServer(this.rootPath);
+
+  Future<void> start({int port = 8080}) async {
+    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    print('文件服务器运行在 http://localhost:$port');
+
+    await for (var request in _server) {
+      _handleRequest(request);
+    }
+  }
+
+  void _handleRequest(HttpRequest request) async {
+    final response = request.response;
+
+    try {
+      final requestedPath = Uri.decodeComponent(request.uri.path);
+      final filePath = path.join(rootPath, requestedPath);
+
+      // 安全检查：确保不访问根目录之外
+      if (!path.isWithin(rootPath, filePath) && filePath != rootPath) {
+        response.statusCode = HttpStatus.forbidden;
+        response.write('Forbidden');
+        response.close();
+        return;
+      }
+
+      final file = File(filePath);
+
+      if (await file.exists()) {
+        // 返回文件
+        final contentType = _getContentType(filePath);
+        response.headers.contentType = contentType;
+
+        await response.addStream(file.openRead());
+      } else {
+        // 文件不存在
+        response.statusCode = HttpStatus.notFound;
+        response.write('Not Found');
+      }
+    } catch (e) {
+      response.statusCode = HttpStatus.internalServerError;
+      response.write('Error: $e');
+    } finally {
+      response.close();
+    }
+  }
+
+  ContentType _getContentType(String filePath) {
+    final ext = path.extension(filePath).toLowerCase();
+    switch (ext) {
+      case '.html':
+        return ContentType.html;
+      case '.css':
+        return ContentType('text', 'css');
+      case '.js':
+        return ContentType('application', 'javascript');
+      case '.json':
+        return ContentType.json;
+      case '.png':
+        return ContentType('image', 'png');
+      case '.jpg':
+      case '.jpeg':
+        return ContentType('image', 'jpeg');
+      default:
+        return ContentType.binary;
+    }
+  }
+
+  Future<void> stop() async {
+    await _server.close();
+  }
+}
+
+void main() async {
+  final server = FileServer('./public');
+  await server.start(port: 8080);
+}
+```
+
+### 6.3 日志系统
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
+
+class FileLogger {
+  final String logPath;
+  final bool printToConsole;
+  late IOSink _sink;
+  final _lock = Lock();
+
+  FileLogger({
+    required this.logPath,
+    this.printToConsole = true,
+  }) {
+    _sink = File(logPath).openWrite(mode: FileMode.append);
+  }
+
+  void log(String level, String message) {
+    final timestamp = DateTime.now().toIso8601String();
+    final logLine = '[$timestamp] [$level] $message\n';
+
+    _sink.write(logLine);
+
+    if (printToConsole) {
+      print(logLine.trim());
+    }
+  }
+
+  void debug(String message) => log('DEBUG', message);
+  void info(String message) => log('INFO', message);
+  void warning(String message) => log('WARN', message);
+  void error(String message) => log('ERROR', message);
+
+  Future<void> flush() async {
+    await _sink.flush();
+  }
+
+  Future<void> close() async {
+    await _sink.close();
+  }
+}
+
+// 简单的锁实现
+class Lock {
+  Future<void> synchronized(FutureOr<void> Function() action) async {
+    await action();
+  }
+}
+
+void main() async {
+  final logger = FileLogger(logPath: 'app.log');
+
+  logger.info('应用启动');
+  logger.debug('调试信息');
+  logger.warning('警告信息');
+  logger.error('错误信息');
+
+  await logger.close();
+}
+```
+
+### 6.4 配置文件管理器
+
+```dart
+import 'dart:io';
+import 'dart:convert';
+
+class ConfigManager {
+  final String configPath;
+  Map<String, dynamic> _config = {};
+
+  ConfigManager(this.configPath);
+
+  Future<void> load() async {
+    final file = File(configPath);
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      _config = jsonDecode(content);
+    } else {
+      _config = {};
+    }
+  }
+
+  Future<void> save() async {
+    final file = File(configPath);
+    final content = const JsonEncoder.withIndent('  ').convert(_config);
+    await file.writeAsString(content);
+  }
+
+  T? get<T>(String key) {
+    final value = _config[key];
+    if (value is T) {
+      return value;
+    }
+    return null;
+  }
+
+  void set<T>(String key, T value) {
+    _config[key] = value;
+  }
+
+  void remove(String key) {
+    _config.remove(key);
+  }
+
+  bool has(String key) => _config.containsKey(key);
+}
+
+void main() async {
+  final config = ConfigManager('config.json');
+
+  await config.load();
+
+  config.set('theme', 'dark');
+  config.set('fontSize', 14);
+  config.set('autoSave', true);
+
+  await config.save();
+
+  print('主题: ${config.get<String>('theme')}');
+  print('字体大小: ${config.get<int>('fontSize')}');
+}
+```
+
+### 6.5 进程池
+
+```dart
+import 'dart:io';
+import 'dart:async';
+
+class ProcessPool {
+  final int maxConcurrent;
+  final List<_ProcessTask> _queue = [];
+  final List<Process> _running = [];
+
+  ProcessPool({this.maxConcurrent = 4});
+
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+  }) async {
+    final completer = Completer<ProcessResult>();
+
+    final task = _ProcessTask(
+      executable: executable,
+      arguments: arguments,
+      workingDirectory: workingDirectory,
+      environment: environment,
+      completer: completer,
+    );
+
+    _queue.add(task);
+    _processQueue();
+
+    return completer.future;
+  }
+
+  void _processQueue() async {
+    while (_queue.isNotEmpty && _running.length < maxConcurrent) {
+      final task = _queue.removeAt(0);
+
+      final process = await Process.start(
+        task.executable,
+        task.arguments,
+        workingDirectory: task.workingDirectory,
+        environment: task.environment,
+      );
+
+      _running.add(process);
+
+      // 等待进程完成
+      final exitCode = await process.exitCode;
+
+      final stdout = await process.stdout.transform(SystemEncoding().decoder).join();
+      final stderr = await process.stderr.transform(SystemEncoding().decoder).join();
+
+      _running.remove(process);
+
+      task.completer.complete(ProcessResult(
+        process.pid,
+        exitCode,
+        stdout,
+        stderr,
+      ));
+
+      _processQueue();
+    }
+  }
+
+  Future<void> close() async {
+    for (var process in List<Process>.from(_running)) {
+      process.kill();
+    }
+    _queue.clear();
+  }
+}
+
+class _ProcessTask {
+  final String executable;
+  final List<String> arguments;
+  final String? workingDirectory;
+  final Map<String, String>? environment;
+  final Completer<ProcessResult> completer;
+
+  _ProcessTask({
+    required this.executable,
+    required this.arguments,
+    this.workingDirectory,
+    this.environment,
+    required this.completer,
+  });
+}
+
+void main() async {
+  final pool = ProcessPool(maxConcurrent: 2);
+
+  final futures = <Future<ProcessResult>>[];
+
+  for (var i = 0; i < 5; i++) {
+    futures.add(pool.run('echo', ['Task $i']));
+  }
+
+  final results = await Future.wait(futures);
+
+  for (var i = 0; i < results.length; i++) {
+    print('任务 $i: ${results[i].stdout.trim()}');
+  }
+
+  await pool.close();
+}
+```
+
+---
+
+## 结语
+
+`dart:io` 是 Dart 进行系统级编程的核心库，通过本书的学习，你应该已经掌握了：
+
+1. **文件系统操作**：File、Directory、Link 的使用
+2. **网络通信**：Socket、HttpClient、HttpServer、WebSocket
+3. **进程管理**：Process 类的使用、标准输入输出
+4. **高级 I/O**：RandomAccessFile、文件锁、压缩
+5. **平台信息**：Platform 类的使用
+6. **实战应用**：文件下载器、HTTP 服务器、日志系统
+
+在实际开发中，建议：
+
+- 优先使用异步方法，避免阻塞 UI
+- 注意资源管理，及时关闭文件和网络连接
+- 处理异常情况，增强程序健壮性
+- 使用 `try-finally` 确保资源释放
+- 考虑平台差异，编写跨平台代码
+
+希望本书能帮助你更好地使用 `dart:io` 构建强大的 Dart/Flutter 应用！

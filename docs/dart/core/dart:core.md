@@ -426,7 +426,7 @@ void main() {
 void main() {
   var duration = Duration(days: 1, hours: 2, minutes: 30, seconds: 45);
   
-  // 总天数（可能包含小数）
+  // 总天数
   print(duration.inDays);         // 输出: 1
   
   // 总小时数
